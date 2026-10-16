@@ -1,9 +1,12 @@
 #include "WheelName.h"
 
+#include "Inventory.h"
 #include "Menus.h"
 #include "Pad.h"
 #include "QuickKeys.h"
 #include "Reflect.h"
+#include "Rows.h"
+#include "SlotCounts.h"
 #include "Ui.h"
 #include "Wheels.h"
 
@@ -16,6 +19,9 @@ namespace wheelname
 		ULONGLONG   g_lastBuild = 0, g_nextLook = 0;
 		bool        g_shown = false;
 		std::string g_text;
+		int             g_detailsHidden = -1;
+		reflect::Handle g_details;   // the game's own centre text of the wheel (quickKeys_details_text): "Shortcut" until set
+		constexpr const wchar_t* kFullNames = L"/Game/Localization/StringTables/ST_FullNames.ST_FullNames";
 		double      g_x = -1e9, g_y = -1e9;
 
 		void White(UE::UObject* a_label)
@@ -80,6 +86,102 @@ namespace wheelname
 			White(a_label);
 		}
 
+		// the game's centre text set to a name: a string-table key (LOC_FN_...) through the game's own table, as the UI shows
+		// it; anything else as it is
+		void SetDetails(UE::UObject* a_label, const std::string& a_text)
+		{
+			auto* fn = a_label->FindFunction(UE::FName(L"SetText", UE::EFindName::Find));
+			const auto params = fn ? reflect::Fields(reinterpret_cast<UE::UStruct*>(fn)) : std::vector<std::pair<std::string, std::int32_t>>{};
+			if (params.empty()) return;
+			const std::wstring w(a_text.begin(), a_text.end());
+			std::vector<std::uint8_t> buf(static_cast<std::size_t>(std::max(reinterpret_cast<UE::UStruct*>(fn)->propertiesSize, 0)) + 16, 0);
+			UE::FText* text = nullptr;
+			if (a_text.starts_with("LOC_")) {
+				static auto* lib = ui::Class(L"/Script/Engine.KismetTextLibrary");
+				ui::Call t(lib ? lib->GetDefaultObject(false) : nullptr, L"TextFromStringTable");
+				void* id = t.At("TableId");
+				void* key = t.At("Key");
+				void* ret = t.At("ReturnValue");
+				if (id && key && ret) {
+					new (id) UE::FName(kFullNames, UE::EFindName::Add);
+					auto* k = new (key) UE::FString(w.c_str());
+					t.Run();
+					auto* got = static_cast<UE::FText*>(ret);
+					text = new (buf.data() + params.front().second) UE::FText(*got);
+					got->~FText();
+					k->~FString();
+				}
+			}
+			if (!text) {
+				text = new (buf.data() + params.front().second) UE::FText(UE::FText::AsCultureInvariant(UE::FString(w.c_str())));
+			}
+			a_label->ProcessEvent(fn, buf.data());
+			text->~FText();
+		}
+
+		// a string-table key (LOC_FN_...) as the game's table gives it; anything else unchanged
+		std::string Resolve(const std::string& a_text)
+		{
+			if (!a_text.starts_with("LOC_")) return a_text;
+			static auto* lib = ui::Class(L"/Script/Engine.KismetTextLibrary");
+			ui::Call t(lib ? lib->GetDefaultObject(false) : nullptr, L"TextFromStringTable");
+			void* id = t.At("TableId");
+			void* key = t.At("Key");
+			void* ret = t.At("ReturnValue");
+			if (!id || !key || !ret) return a_text;
+			const std::wstring w(a_text.begin(), a_text.end());
+			new (id) UE::FName(kFullNames, UE::EFindName::Add);
+			auto* k = new (key) UE::FString(w.c_str());
+			t.Run();
+			auto* got = static_cast<UE::FText*>(ret);
+			std::string out = reflect::Text(*got);
+			got->~FText();
+			k->~FString();
+			return out.empty() ? a_text : out;
+		}
+
+		// The name of what the pointed slot holds, in the wheel's own centre text (the game left "Shortcut" there: it names
+		// its own key data, which the Magic wheel does not use and the inventory wheel's panel does not fill). Nothing
+		// pointed: the game's text is left alone.
+		void UpdateDetails(UE::UObject* a_wheel, int a_mode)   // 0 Equipment keys, 1 Magic spells, 2 Ammo
+		{
+			// the label of THIS wheel (the radial, the inventory's panel and the magic menu's panel are three instances)
+			static UE::UObject* s_wheel = nullptr;
+			auto* label = reflect::Get(g_details);
+			if (!label || s_wheel != a_wheel) {
+				label = ui::FindInTree(a_wheel, "quickKeys_details_text");
+				s_wheel = a_wheel;
+				g_details = label ? reflect::Hold(label) : reflect::Handle{};
+				g_detailsHidden = -1;
+				if (!label) return;
+			}
+			// the Magic wheel's picture covers the game's centre text and the game rewrites it ("Shortcut") as it likes: hidden there,
+			// the name is drawn above the picture instead
+			const bool overlay = a_mode != 0;
+			if (g_detailsHidden != (overlay ? 1 : 0)) {
+				ui::Visible(label, !overlay);
+				g_detailsHidden = overlay ? 1 : 0;
+			}
+			const int pointed = quickkeys::PointedSlot();   // 1..8, 0 / -1 none
+			// nothing pointed, or an empty slot: blank (the game's own text there is "Shortcut")
+			const auto id = pointed >= 1 && pointed <= 8 ? (a_mode == 1 ? wheels::MagicSlots()[static_cast<std::size_t>(pointed - 1)] : a_mode == 2 ? wheels::AmmoSlots()[static_cast<std::size_t>(pointed - 1)] : inventory::Keys()[static_cast<std::size_t>(pointed - 1)]) : 0u;
+			std::string text = " ";
+			if (id) {
+				std::string name = a_mode == 1 ? rows::SpellName(id) : inventory::NameOf(id);
+				if (name.starts_with("UI_UserInputText")) {   // a name the player gave: the form keeps a placeholder
+					name = rows::DisplayName(id);
+				}
+				if (!name.empty()) text = name;
+			}
+			if (overlay) {
+				// the Magic wheel's picture covers the game's centre text: the name is drawn above it (SlotCounts.cpp), the game's blanked
+				slotcounts::SetCentre(text == " " ? std::string() : Resolve(text));
+			} else {
+				slotcounts::SetCentre({});
+				SetDetails(label, text);
+			}
+		}
+
 		// where the wheel widget is on the viewport (viewport units): its top-left and its width
 		bool Measure(UE::UObject* a_w, double& a_x, double& a_y, double& a_width)
 		{
@@ -129,14 +231,18 @@ namespace wheelname
 	void Tick()
 	{
 		const ULONGLONG now = GetTickCount64();
-		if (now < g_nextLook) return;
+		static int s_lastPointed = -9;
+		const int  pointedNow = quickkeys::PointedSlot();
+		const bool pointedMoved = pointedNow != s_lastPointed;   // the game rewrites its text as the pointer moves: answer at once
+		if (now < g_nextLook && !pointedMoved) return;
+		s_lastPointed = pointedNow;
 		g_nextLook = now + 100;
 
 		// which wheel is on screen
 		const auto menu = menus::Active();
 		const char* name = nullptr;
 		if (quickkeys::RadialOpen()) {
-			name = wheels::Active() == wheels::Wheel::kMagic ? "Magic Wheel" : "Inventory Wheel";
+			name = wheels::Active() == wheels::Wheel::kMagic ? "Magic Wheel" : wheels::Active() == wheels::Wheel::kAmmo ? "Ammo Wheel" : "Inventory Wheel";
 		} else if (menu == menus::Menu::kInventory && quickkeys::PanelOpen()) {
 			name = "Inventory Wheel";
 		} else if (menu == menus::Menu::kMagic && pad::MagicPanelUp()) {
@@ -147,6 +253,7 @@ namespace wheelname
 			Hide();
 			return;
 		}
+		UpdateDetails(wheel, std::string_view(name) == "Magic Wheel" ? 1 : std::string_view(name) == "Ammo Wheel" ? 2 : 0);
 		if (!reflect::Get(g_root) && !Build()) return;
 		auto* root = reflect::Get(g_root);
 		auto* label = reflect::Get(g_label);

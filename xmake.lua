@@ -15,7 +15,7 @@ add_shflags("/PDBALTPATH:%_PDB%", {force = true})
 includes("lib/commonlibob64")
 
 set_project("ImprovedWheelMenu")
-set_version("1.0.1")
+set_version("1.1.0")
 set_license("GPL-3.0-or-later")
 set_languages("c++23")
 set_warnings("allextra")
@@ -27,7 +27,7 @@ add_rules("plugin.vsxmake.autoupdate")
 target("ImprovedWheelMenu")
     add_rules("commonlibob64.plugin", {
         name = "ImprovedWheelMenu",
-        author = "ApocryphaRealm",
+        author = "ApocryphaRealm (modified by cfa911)",
         description = "Improved Wheel Menu - the Quick Keys radial, augmented (Oblivion Remastered)"
     })
     add_syslinks("user32")

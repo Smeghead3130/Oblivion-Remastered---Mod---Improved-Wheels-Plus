@@ -171,6 +171,18 @@ namespace favourites
 			return true;
 		}
 
+		// A row mid-construction or mid-destruction can hold garbage widget pointers: an access violation while its column is
+		// read or built skips that row (built again on a later tick) instead of ending the game.
+		bool BuildGuarded(UE::UObject* a_row, Column& a_col, const char* a_horizontal, bool* a_faulted)
+		{
+			__try {
+				return Build(a_row, a_col, a_horizontal);
+			} __except (GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH) {
+				*a_faulted = true;
+				return false;
+			}
+		}
+
 		// a star's button clicked: its row's item on or off the wheel, as Y
 		void OnButton(UE::UObject* a_obj, UE::UFunction* a_fn, void*)
 		{
@@ -195,10 +207,65 @@ namespace favourites
 				return;
 			}
 		}
+
+			// A row is handed its item (the BP event OnListItemObjectSet): its star is set right after, in that frame and before anything is
+			// drawn, so no star shows the item the row held before. The timer in Tick still builds the columns of new rows and catches
+			// anything this misses.
+			void UpdateExisting(UE::UObject* a_row, bool a_magic)
+			{
+				const auto it = g_columns.find(a_row);
+				if (it == g_columns.end()) return;
+				Column& col = it->second;
+				if (col.rowSlot != a_row->internalIndex || !reflect::Get(col.overlay)) return;
+				const std::string key = a_magic ? rows::MagicRowKey(a_row) : rows::InventoryRowKey(a_row);
+				if (key != col.key) {
+					col.key = key;
+					col.form = a_magic ? rows::MagicRowSpell(a_row) : rows::InventoryRowForm(a_row);
+					col.shown = -1;
+				}
+				const auto favs = a_magic ? wheels::MagicFavourites() : wheels::Favourites();
+				const bool can = a_magic || !col.form || wheels::CanFavourite(col.form);
+				const int  fav = !can ? 2 : col.form && favs.contains(col.form) ? 1 : 0;
+				if (fav != col.shown) {
+					ui::Visible(reflect::Get(col.overlay), fav != 2);
+					ui::Visible(reflect::Get(col.fill), fav == 1);
+					col.shown = fav;
+				}
+			}
+
+			void OnRowPost(UE::UObject* a_obj, UE::UFunction* a_fn, void*)
+			{
+				static std::unordered_map<UE::UFunction*, bool> s_isItemSet;   // each distinct function is looked at by name once
+					auto                                            it = s_isItemSet.find(a_fn);
+				if (it == s_isItemSet.end()) {
+					const auto name = pe::FunctionName(a_fn);
+					it = s_isItemSet.emplace(a_fn, name == "OnListItemObjectSet").first;
+				}
+				if (!it->second || !a_obj) return;
+				UpdateExisting(a_obj, a_obj->GetClass() == rows::MagicRowClass());
+			}
+
+			void RegisterRowHooks()
+			{
+				static bool s_done[2] = { false, false };
+				if (!s_done[0]) {
+					if (auto* c = rows::InventoryRowClass(); c && pe::WatchPost(c, &OnRowPost)) {
+						s_done[0] = true;
+						logger::info("favourites: the inventory's stars are set right after a row gets its item");
+					}
+				}
+				if (!s_done[1]) {
+					if (auto* c = rows::MagicRowClass(); c && pe::WatchPost(c, &OnRowPost)) {
+						s_done[1] = true;
+						logger::info("favourites: the magic menu's stars are set right after a row gets its item");
+					}
+				}
+			}
 	}
 
 	void Tick()
 	{
+		RegisterRowHooks();
 		// the inventory's rows (items: the Equipment and Ammo wheels) and the magic menu's (spells: the Magic wheel) - the
 		// owner, 2026-09-30: "we need to add a star for favorites on the column in the magic menu"
 		const auto menu = menus::Active();
@@ -225,7 +292,18 @@ namespace favourites
 			if (col.rowSlot != row->internalIndex || !reflect::Get(col.overlay)) {
 				col = {};
 				col.magic = magic;
-				if (!Build(row, col, magic ? "Magic_entry_horizontal" : "inv_entry_horizontal")) continue;
+				bool faulted = false;
+				if (!BuildGuarded(row, col, magic ? "Magic_entry_horizontal" : "inv_entry_horizontal", &faulted)) {
+					if (faulted) {
+						col = {};
+						static bool warned = false;
+						if (!warned) {
+							warned = true;
+							logger::warn("favourites: a row's widgets could not be read (access violation) - row skipped, not crashed");
+						}
+					}
+					continue;
+				}
 				++built;
 			}
 			const std::string key = magic ? rows::MagicRowKey(row) : rows::InventoryRowKey(row);

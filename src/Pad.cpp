@@ -1,6 +1,7 @@
 #include "Pad.h"
 
 #include "Ammo.h"
+#include "Keyboard.h"
 #include "WheelName.h"
 #include "Inventory.h"
 #include "MagicWheel.h"
@@ -122,6 +123,9 @@ namespace pad
 		bool g_magicPanel = false;   // the magic menu's panel is up (it reports no visibility change; tracked from our own toggles)
 		bool g_swallowA = false;     // A was ours (the magic menu's panel): the game never sees it, until let go
 		bool g_swallowX = false;     // X (drop) on a favourite: the game never sees it, until let go
+		bool g_panelX = false;       // X went down on a pointed slot of an assign panel (held 0.6 s clears the slot)
+		bool g_panelXFired = false;
+		Clock::time_point g_panelXAt{};
 
 		// the centre rest snap on the HUD radial (the owner, 2026-09-29: "we'd have to add the center rest snap feature or
 		// you might select items mistakenly"): once the right stick has pointed, bringing it back to rest in the middle for
@@ -231,6 +235,13 @@ namespace pad
 		}
 
 		// the HUD radial is closing on a slot of the Magic wheel: the game must use nothing, the spell is ours to set
+		void CloseOnAmmo(int a_slot)
+		{
+			quickkeys::CancelChoice();
+			wheels::UseAmmo(a_slot);
+			g_closingMagic = true;   // held clear until the radial has closed
+		}
+
 		void CloseOnMagic(int a_slot)
 		{
 			quickkeys::CancelChoice();
@@ -326,6 +337,25 @@ namespace pad
 			return s_fn();
 		}
 
+		// The search keyboard plugin (OblivionSearchKeyboard.dll) has the controller while its keyboard is up: the menu rules stand aside
+		// (X on a favourite would be swallowed as 'not a drop' before the keyboard could use it as Delete).
+		bool SearchKeyboardOpen()
+		{
+			using Fn = bool (*)();
+			static Fn        s_fn = nullptr;
+			static ULONGLONG s_next = 0;
+			if (!s_fn) {
+				const ULONGLONG now = GetTickCount64();
+				if (now < s_next) return false;
+				s_next = now + 2000;
+				if (HMODULE m = GetModuleHandleW(L"OblivionSearchKeyboard.dll")) {
+					s_fn = reinterpret_cast<Fn>(GetProcAddress(m, "OblivionSearchKeyboard_IsOpen"));
+				}
+				if (!s_fn) return false;
+			}
+			return s_fn();
+		}
+
 		void ResetMenuState()
 		{
 			g_menuDownHeld = false;
@@ -334,6 +364,25 @@ namespace pad
 
 		void Rewrite(XINPUT_GAMEPAD& a_pad)
 		{
+			{   // a wheel's own button (INI [Wheel] uEquipmentWheelButton / uMagicWheelButton / uAmmoWheelButton): that wheel is made the
+				// active one, and the wheel button is held for as long as it is - so one press opens the radial on that wheel
+				static WORD s_prevDirect = 0;
+				const auto&  st = settings::Get();
+				const WORD   wheelBtn = static_cast<WORD>(st.wheelButton ? st.wheelButton : XINPUT_GAMEPAD_DPAD_DOWN);
+				const std::array<std::pair<WORD, wheels::Wheel>, 3> direct{ {
+					{ static_cast<WORD>(st.equipmentWheelButton), wheels::Wheel::kEquipment },
+					{ static_cast<WORD>(st.magicWheelButton), wheels::Wheel::kMagic },
+					{ static_cast<WORD>(st.ammoWheelButton), wheels::Wheel::kAmmo } } };
+				WORD held = 0;
+				const bool inGame = (menus::Active() == menus::Menu::kNone && !menus::AnyOpen()) || quickkeys::RadialOpen();
+				for (const auto& [mask, wheel] : direct) {
+					if (!mask || mask == wheelBtn || !inGame || !(a_pad.wButtons & mask)) continue;
+					held |= mask;
+					if (!(s_prevDirect & mask)) wheels::SetActive(wheel);
+				}
+				s_prevDirect = held;
+				if (held) a_pad.wButtons = static_cast<WORD>((a_pad.wButtons & ~held) | wheelBtn);
+			}
 			const WORD raw = a_pad.wButtons;
 			const WORD pressed = raw & ~g_prevRaw;
 			const WORD released = ~raw & g_prevRaw;
@@ -401,12 +450,15 @@ namespace pad
 			WORD out = raw;
 
 			// the ammo wheel (a bow held, its button in gameplay): while it is open it takes the read (Ammo.cpp)
+			quickkeys::BoostAnimations();
 			wheelname::Tick();   // "Inventory Wheel" / "Magic Wheel" over the wheel on screen
-			magicwheel::Tick();  // the Magic wheel's own widget over the game's wheel; no spells on the inventory wheel
+			magicwheel::Tick();   // the Magic wheel's own widget over the game's wheel; no spells on the inventory wheel
 			const bool ammoTook = ammo::Rewrite(a_pad, raw, pressed, out, menu == menus::Menu::kNone && !menus::AnyOpen(), quickkeys::RadialOpen());
 
 			if (ammoTook) {
 				// the D-pad, A, B and the right stick were the ammo wheel's
+			} else if (SearchKeyboardOpen()) {
+				// the search keyboard has the pad: the menu rules stand aside
 			} else if (menu != menus::Menu::kNone) {
 				// ---- the inventory / magic menu ----
 				// the magic menu's panel, read from the widgets themselves five times a second (the owner, 2026-09-30:
@@ -423,9 +475,14 @@ namespace pad
 						SetMagicPanel(up);
 					}
 				}
-				out &= ~XINPUT_GAMEPAD_Y;
-				if (pressed & XINPUT_GAMEPAD_Y) {
-					wheels::Favourite(menu);
+				// the favourite button (uFavouriteButton): Select by default, so Y stays the game's own. With 0x8000 (Y) it is the
+				// original behaviour: Y favourites and the game's sorting moves to the left stick click. 0 = no controller button.
+				const WORD favButton = static_cast<WORD>(settings::Get().favouriteButton);
+				if (favButton) {
+					out &= ~favButton;   // the game never sees it
+					if (pressed & favButton) {
+						wheels::Favourite(menu);
+					}
 				}
 				// a favourite cannot be dropped (X drops, holding X drops the stack) - the owner, 2026-09-29
 				if (menu == menus::Menu::kInventory && (pressed & XINPUT_GAMEPAD_X)) {
@@ -435,26 +492,30 @@ namespace pad
 						logger::info("pad: X on {} - a favourite cannot be dropped", inventory::NameOf(item));
 					}
 				}
-				out &= ~XINPUT_GAMEPAD_LEFT_THUMB;
-				if (raw & XINPUT_GAMEPAD_LEFT_THUMB) {
-					out |= XINPUT_GAMEPAD_Y;   // the game's sorting, moved from Y to the stick click
-				}
-				out &= ~XINPUT_GAMEPAD_DPAD_DOWN;
-				if (pressed & XINPUT_GAMEPAD_DPAD_DOWN) {
-					g_menuDownHeld = true;
-					g_menuDownFired = false;
-					g_menuDownAt = now;
-				}
-				if (g_menuDownHeld && !g_menuDownFired && (raw & XINPUT_GAMEPAD_DPAD_DOWN) && now - g_menuDownAt >= kHoldThreshold) {
-					g_menuDownFired = true;
-					g_pulseLS = kPulseReads;   // the game's own Show/Hide Shortcuts
-					logger::info("pad: D-pad down held in the {} - assign panel toggled", menus::Name(menu));
+				if (favButton == XINPUT_GAMEPAD_Y) {   // only when Y was taken for favourites
+					out &= ~XINPUT_GAMEPAD_LEFT_THUMB;
+					if (raw & XINPUT_GAMEPAD_LEFT_THUMB) {
+						out |= XINPUT_GAMEPAD_Y;   // the game's sorting, moved from Y to the stick click
 					}
-				if (released & XINPUT_GAMEPAD_DPAD_DOWN) {
-					if (g_menuDownHeld && !g_menuDownFired) {
-						g_pulseDown = kPulseReads;   // a tap: the list moves one row, as before
+				}
+				if (settings::Get().dpadDownPanel) {   // bDpadDownPanel=0: D-pad down stays the game's; L3 (Show Shortcuts) opens the panel natively
+					out &= ~XINPUT_GAMEPAD_DPAD_DOWN;
+					if (pressed & XINPUT_GAMEPAD_DPAD_DOWN) {
+						g_menuDownHeld = true;
+						g_menuDownFired = false;
+						g_menuDownAt = now;
 					}
-					ResetMenuState();
+					if (g_menuDownHeld && !g_menuDownFired && (raw & XINPUT_GAMEPAD_DPAD_DOWN) && now - g_menuDownAt >= kHoldThreshold) {
+						g_menuDownFired = true;
+						g_pulseLS = kPulseReads;   // the game's own Show/Hide Shortcuts
+						logger::info("pad: D-pad down held in the {} - assign panel toggled", menus::Name(menu));
+						}
+					if (released & XINPUT_GAMEPAD_DPAD_DOWN) {
+						if (g_menuDownHeld && !g_menuDownFired) {
+							g_pulseDown = kPulseReads;   // a tap: the list moves one row, as before
+						}
+						ResetMenuState();
+					}
 				}
 				if (quickkeys::PanelOpen() || (menu == menus::Menu::kMagic && g_magicPanel)) {
 					// B backs out of the panel (the game's own toggle, as the hold on D-pad down); the next B leaves the menu
@@ -478,6 +539,25 @@ namespace pad
 							wheels::AssignPressed(menu, pointed);
 						}
 					}
+					// X held on a pointed slot: every entry comes off it. X is swallowed while a slot is pointed, so the game's
+					// Drop never sees it (a tap does nothing).
+					if ((pressed & XINPUT_GAMEPAD_X) && PointedKey() >= 0) {
+						g_panelX = true;
+						g_panelXFired = false;
+						g_panelXAt = now;
+						g_swallowX = true;
+					}
+					if (g_panelX) {
+						if (!(raw & XINPUT_GAMEPAD_X)) {
+							g_panelX = false;
+						} else if (!g_panelXFired && now - g_panelXAt >= 600ms) {
+							g_panelXFired = true;
+							const int key = PointedKey();
+							if (key >= 0) {
+								wheels::ClearSlot(menu == menus::Menu::kMagic ? wheels::Wheel::kMagic : wheels::Wheel::kEquipment, key);
+							}
+						}
+					}
 					out &= ~(XINPUT_GAMEPAD_DPAD_LEFT | XINPUT_GAMEPAD_DPAD_RIGHT);
 					const auto wheel = menu == menus::Menu::kMagic ? wheels::Wheel::kMagic : wheels::Wheel::kEquipment;
 					if (pressed & XINPUT_GAMEPAD_DPAD_LEFT) { wheels::CycleEntry(wheel, PointedKey(), -1); }
@@ -494,6 +574,8 @@ namespace pad
 					}
 				}
 				// ---- gameplay ----
+				// the button that opens the game's wheel (uWheelButton): D-pad down by default; LB is the game's own binding
+				const WORD wheelBtn = settings::Get().wheelButton ? static_cast<WORD>(settings::Get().wheelButton) : static_cast<WORD>(XINPUT_GAMEPAD_DPAD_DOWN);
 				const auto sinceDown = [&]() { return std::chrono::duration_cast<std::chrono::milliseconds>(now - g_gameDownAt).count(); };
 				const bool radialOpen = quickkeys::RadialOpen();
 				if (radialOpen && !g_sawRadialOpen) {
@@ -510,7 +592,7 @@ namespace pad
 						logger::warn("pad: no wheel showed within {} ms of the tap - the wheel button is let go", kPendingLatchLimit.count());
 					}
 				}
-				if (pressed & XINPUT_GAMEPAD_DPAD_DOWN) {
+				if (pressed & wheelBtn) {
 					if (g_latched) {
 						g_latched = false;
 						g_suppressDown = true;   // the game sees the button go up: the wheel closes - on nothing
@@ -529,7 +611,7 @@ namespace pad
 						logger::debug("pad: wheel button down (wheel open: {}, in a menu: {})", radialOpen, g_downInMenu);
 					}
 				}
-				if (released & XINPUT_GAMEPAD_DPAD_DOWN) {
+				if (released & wheelBtn) {
 					if (g_suppressDown) {
 						g_suppressDown = false;
 						logger::debug("pad: wheel button up after {} ms - already handled", sinceDown());
@@ -546,9 +628,9 @@ namespace pad
 						logger::info("pad: wheel button up after {} ms and no wheel showed", sinceDown());
 					}
 				}
-				out &= ~XINPUT_GAMEPAD_DPAD_DOWN;
-				if (((raw & XINPUT_GAMEPAD_DPAD_DOWN) && !g_suppressDown) || g_latched || g_pendingLatch) {
-					out |= XINPUT_GAMEPAD_DPAD_DOWN;
+				out &= ~wheelBtn;
+				if (((raw & wheelBtn) && !g_suppressDown) || g_latched || g_pendingLatch) {
+					out |= wheelBtn;
 				}
 				if (!quickkeys::RadialOpen()) {
 					RestSnap(a_pad, now);   // only notes that it closed
@@ -557,15 +639,15 @@ namespace pad
 					// B backs out: nothing is used, the wheel closes
 					quickkeys::CancelChoice();
 					g_latched = false;
-					if (raw & XINPUT_GAMEPAD_DPAD_DOWN) { g_suppressDown = true; }
+					if (raw & wheelBtn) { g_suppressDown = true; }
 					g_swallowB = true;
 					g_centreStick = kPulseReads * 2;
-					out &= ~XINPUT_GAMEPAD_DPAD_DOWN;
+					out &= ~wheelBtn;
 					logger::info("pad: B on the wheel - closed without using a slot");
 				} else if (quickkeys::RadialOpen()) {
 					RestSnap(a_pad, now);
 					const int slot = PointedKey();
-					out &= ~(XINPUT_GAMEPAD_DPAD_LEFT | XINPUT_GAMEPAD_DPAD_RIGHT | XINPUT_GAMEPAD_LEFT_SHOULDER | XINPUT_GAMEPAD_RIGHT_SHOULDER);
+					out &= ~((XINPUT_GAMEPAD_DPAD_LEFT | XINPUT_GAMEPAD_DPAD_RIGHT | XINPUT_GAMEPAD_LEFT_SHOULDER | XINPUT_GAMEPAD_RIGHT_SHOULDER) & ~wheelBtn);   // never the wheel button itself
 					if (pressed & XINPUT_GAMEPAD_DPAD_LEFT) { wheels::SwitchWheel(-1); }
 					if (pressed & XINPUT_GAMEPAD_DPAD_RIGHT) { wheels::SwitchWheel(+1); }
 					if (ltPressed) { wheels::CycleEntry(wheels::Active(), slot, -1); }
@@ -584,23 +666,27 @@ namespace pad
 						if (wheels::Active() == wheels::Wheel::kMagic) {
 							CloseOnMagic(slot);
 							logger::info("pad: A on the Magic wheel - slot {} chosen, the wheel closes", slot + 1);
+						} else if (wheels::Active() == wheels::Wheel::kAmmo) {
+							CloseOnAmmo(slot);
 						} else {
 							CloseOnEquipment(slot, "A");
 						}
 						g_swallowA = true;
 						g_latched = false;
-						if (raw & XINPUT_GAMEPAD_DPAD_DOWN) { g_suppressDown = true; }
-						out &= ~(XINPUT_GAMEPAD_DPAD_DOWN | XINPUT_GAMEPAD_A);   // let go now: the wheel closes
+						if (raw & wheelBtn) { g_suppressDown = true; }
+						out &= ~(wheelBtn | XINPUT_GAMEPAD_A);   // let go now: the wheel closes
 					}
 					if (pressed & XINPUT_GAMEPAD_RIGHT_SHOULDER) {
 						if (wheels::Active() == wheels::Wheel::kMagic) {
 							CloseOnMagic(slot);
+						} else if (wheels::Active() == wheels::Wheel::kAmmo) {
+							CloseOnAmmo(slot);
 						} else {
 							CloseOnEquipment(slot, "RB");
 						}
 						g_latched = false;
-						if (raw & XINPUT_GAMEPAD_DPAD_DOWN) { g_suppressDown = true; }
-						out &= ~XINPUT_GAMEPAD_DPAD_DOWN;   // let go now: the wheel closes (on nothing - the use follows)
+						if (raw & wheelBtn) { g_suppressDown = true; }
+						out &= ~wheelBtn;   // let go now: the wheel closes (on nothing - the use follows)
 					}
 					a_pad.bLeftTrigger = 0;
 					a_pad.bRightTrigger = 0;
@@ -686,14 +772,22 @@ namespace pad
 			if (rc != ERROR_SUCCESS) {
 				XINPUT_STATE blank{};
 				XINPUT_GAMEPAD probe{};
-				if (!Inject(probe)) {
+				const bool step = Inject(probe);
+				const bool keys = keyboard::Apply(probe);   // the keyboard as a virtual controller (INI [Keyboard])
+				if (!step && !keys && !keyboard::PresentWhenNoPad()) {
 					return rc;
 				}
-				*a_state = blank;   // no pad connected, but a test step is running: hand over the step alone
+				static bool s_said = false;
+				if (!s_said) {
+					s_said = true;
+					logger::info("pad: no controller is connected - the game is handed an idle pad so the keyboard rules run every frame (INI [Keyboard] bVirtualPadWhenNone)");
+				}
+				*a_state = blank;   // no pad connected, but a test step or a bound key is active: hand over that alone
 				a_state->Gamepad = probe;
 				rc = ERROR_SUCCESS;
 			} else {
 				Inject(a_state->Gamepad);
+				keyboard::Apply(a_state->Gamepad);
 			}
 			g_reads.fetch_add(1, std::memory_order_relaxed);
 			const WORD rawButtons = a_state->Gamepad.wButtons;

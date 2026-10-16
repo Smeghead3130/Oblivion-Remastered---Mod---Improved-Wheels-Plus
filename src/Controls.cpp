@@ -117,6 +117,48 @@ namespace controls
 			return std::find(now.begin(), now.end(), a_key) != now.end();
 		}
 
+		// IA_Game_QuickKeys_Keyboard_1..8 taken off the keys in the context (INI [Keyboard] bReplaceQuickKeys): the plugin's slot keys
+		// (Keyboard.cpp) replace them, so a digit no longer opens the radial or assigns to the game's own key storage
+		int UnbindNativeQuickKeys()
+		{
+			// the keyboard quick keys are not in IMC_Game_Default (nothing of that name was found there): every mapping context the
+			// game has loaded is looked through
+			const auto m = Mappings();
+			auto* imcClass = UE::StaticFindObject<UE::UClass>(nullptr, nullptr, L"/Script/EnhancedInput.InputMappingContext");
+			if (!imcClass || m.size <= 0 || m.action < 0) return 0;
+			const auto off = reflect::Offset(reinterpret_cast<UE::UStruct*>(imcClass), "Mappings");
+			if (off < 0) return 0;
+			int total = 0;
+			for (auto* ctx : reflect::Instances(imcClass)) {
+				if (!ctx) continue;
+				const auto* arr = reinterpret_cast<const RawArray*>(reinterpret_cast<const std::uint8_t*>(ctx) + off);
+				if (!arr->data || arr->num <= 0) continue;
+				std::vector<UE::UObject*> actions;
+				for (std::int32_t i = 0; i < arr->num; ++i) {
+					const std::uint8_t* e = arr->data + static_cast<std::ptrdiff_t>(i) * m.size;
+					auto* act = *reinterpret_cast<UE::UObject* const*>(e + m.action);
+					if (act && NameOf(act).starts_with("IA_Game_QuickKeys_Keyboard_") && std::find(actions.begin(), actions.end(), act) == actions.end()) {
+						actions.push_back(act);
+					}
+				}
+				for (auto* act : actions) {
+					ui::Call c(ctx, L"UnmapAllKeysFromAction");
+					if (!c) {
+						logger::warn("controls: a mapping context has no UnmapAllKeysFromAction - the game's keyboard quick keys stay");
+						return total;
+					}
+					c.Set("Action", act);
+					c.Run();
+					++total;
+				}
+				if (!actions.empty()) {
+					static int s_named = 0;
+					if (s_named++ < 4) logger::info("controls: {} had {} keyboard quick key action(s) - taken off their keys", NameOf(ctx), actions.size());
+				}
+			}
+			return total;
+		}
+
 		void RebuildMappings()
 		{
 			auto* cls = UE::StaticFindObject<UE::UClass>(nullptr, nullptr, L"/Script/EnhancedInput.EnhancedInputLocalPlayerSubsystem");
@@ -227,6 +269,10 @@ namespace controls
 				logger::error("controls: {}", g_status.problem);
 				return;
 			}
+			if (settings::Get().ammoButton == settings::Get().wheelButton || settings::Get().ammoButton == settings::Get().favouriteButton) {
+				logger::warn("controls: the ammo wheel button 0x{:04X} is also the wheel / favourite button - D-pad right is used instead", settings::Get().ammoButton);
+				settings::SetAmmoButton(XINPUT_GAMEPAD_DPAD_RIGHT);
+			}
 			const auto key = KeyFor(static_cast<WORD>(settings::Get().ammoButton));
 			const bool mapped = MapKey(key);
 			g_status.rowAdded = AddRow();
@@ -251,7 +297,15 @@ namespace controls
 			const auto& now = keys.front();
 			g_status.boundKey = now;
 			if (now != wanted) {
-				if (const WORD mask = MaskFor(now)) {
+				const WORD mask = MaskFor(now);
+				if (mask && (mask == static_cast<WORD>(settings::Get().wheelButton) || mask == static_cast<WORD>(settings::Get().favouriteButton))) {
+					// the wheel's own button (LB on a default controller) is never the ammo wheel's: an earlier build copied it into the INI
+					static bool warned = false;
+					if (!warned) {
+						warned = true;
+						logger::warn("controls: the ammo wheel showed {} - that is the wheel / favourite button, so it stays on {}", now, wanted);
+					}
+				} else if (mask) {
 					settings::SetAmmoButton(mask);
 					logger::info("controls: the ammo wheel was rebound on the Controls page: {} (kept in the INI)", now);
 				} else {
@@ -275,6 +329,13 @@ namespace controls
 		g_wasInMenu = inMenu;
 		if (!inMenu && (backInGameplay || g_ticks % 60 == 0)) {
 			Follow();
+		}
+		if (settings::Get().keyboard.enabled && settings::Get().keyboard.replaceQuickKeys && (g_ticks % 25 == 0 || backInGameplay)) {
+			if (const int n = UnbindNativeQuickKeys(); n > 0) {
+				static int s_logged = 0;
+				if (s_logged++ < 3) logger::info("controls: the game's keyboard quick keys ({} actions) taken off the keys - the plugin's slot keys replace them", n);
+				RebuildMappings();
+			}
 		}
 	}
 

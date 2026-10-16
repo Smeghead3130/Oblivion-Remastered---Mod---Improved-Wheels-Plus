@@ -131,6 +131,11 @@ namespace inventory
 		return out;
 	}
 
+	bool Ready()
+	{
+		return Items() != nullptr;
+	}
+
 	bool Has(std::uint32_t a_formID)
 	{
 		const auto* item = Find(a_formID);
@@ -244,7 +249,14 @@ namespace inventory
 		if (!n || !*n) {
 			n = player ? RE::TESFullName::GetFullName(player) : nullptr;
 		}
-		return n && *n ? std::string(n) : std::string("Player");
+		std::string name = n && *n ? std::string(n) : std::string("Player");
+		// A new game must not inherit the last character's wheels: the typed name alone is not unique (the file of a new game
+		// came out as the same "UI_UserInputText_0_705_0"), and a save loaded after another character's must not keep that one's
+		// either. The character's own seed (set when the character is made, kept in the save) tells them apart.
+		if (player && player->characterSeed != 0) {
+			name += std::format(" #{:08X}", player->characterSeed);
+		}
+		return name;
 	}
 
 	State StateOf(std::uint32_t a_formID)

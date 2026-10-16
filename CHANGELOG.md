@@ -3,6 +3,25 @@
 Written as changes happen, not reconstructed afterwards (rule 61). Started 2026-09-29; the history before this file is
 in `git log`. A version number is issued by the version gate only once a build is seen working in game (rule 48).
 
+## 1.1.0 - 2026-10-17 - Controller and Keyboard Support build (a fork of 1.0.1 by cfa911)
+
+### Added
+- Hold X (0.6 s) on a pointed slot of the Inventory or Magic assign panel clears every entry of that slot (the Equipment items stop being favourites). X is kept from the game's Drop while a slot is pointed.
+- Spells the player made (full name a placeholder "UI_UserInputText_...", no string-table key) can be put on the Magic wheel: a magic row's InventoryIndex is its spell's place in the player's spell list plus one, proven on the rows the key names (12 of 12 agree before it is used), then used for the rows without a key. Same-named spells are told apart by it.
+- Settings: uWheelButton (the wheel button, LB), uFavouriteButton (Select), bDpadDownPanel; the favourite button keeps the game's Y sorting.
+
+- The Magic wheel shows the same "2/5" slot counters as the inventory wheel.
+- The wheel's centre text names the pointed slot's spell or item (it said "Shortcut"). On the Magic wheel the name is drawn above the wheel's picture, centred, and the game's own text is hidden; names the player typed (made spells, renamed or enchanted items) are read from the game's own table of typed texts (UVAltarUserInputTextSubsystem > UserInputTextSaveData > UserInputTextsMap, keyed by the placeholder "UI_UserInputText_..." in the form's name); the names learned from the menu rows (ImprovedWheelMenu\SpellNames.txt) are the fallback.
+
+- The keyboard as a virtual controller ([Keyboard] in the INI, every key rebindable): each key presses one controller control, laid over the real pad on the game thread, so every controller rule works from the keyboard; the number row and Numpad 1-8 are slot keys: in gameplay they point at slot N and use it at once (wheel button, the stick at the slot, then A), in the Inventory / Magic menu they assign the highlighted row to slot N through the assign panel; the game's own IA_Game_QuickKeys_Keyboard_N are taken off those keys (bReplaceQuickKeys).
+
+- Direct wheel buttons (uEquipmentWheelButton, uMagicWheelButton, uAmmoWheelButton), the radial's animation speed (uAnimSpeedPercent) and the ammo wheel's position (uPosition) in the INI.
+- The wheels are kept per character; what a character cannot have is taken off the wheels a moment after the character loads.
+- While the Oblivion Search Keyboard is open the plugin's menu rules stand aside (it asks the keyboard through its export OblivionSearchKeyboard_IsOpen).
+
+### Changed
+- bCentreRestSnap defaults are left to the INI; the INI ships it on.
+
 ## 1.0.1 - 2026-10-02 - untested
 
 ### Fixed

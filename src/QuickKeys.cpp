@@ -3,6 +3,7 @@
 #include "Menus.h"
 #include "PEHook.h"
 #include "Reflect.h"
+#include "Settings.h"
 #include "Ui.h"
 
 
@@ -30,9 +31,11 @@ namespace quickkeys
 		UE::UFunction* g_fnKeyIndex = nullptr;
 		UE::UFunction* g_fnUpdateIcons = nullptr;    // the game (re)draws all eight pictures
 		UE::UFunction* g_fnSetKeyPicture = nullptr;  // SetQuickKeyByIndex: one picture
+		std::atomic<bool> g_redrew{ false };       // the game redrew its pictures: the inventory wheel is put right on the next read, not up to 100 ms later
 		std::atomic<bool> g_gameDrew{ false };      // the game drew pictures since the last TakeGameDrew()
 		bool g_drawing = false;                     // our own SetQuickKeyByIndex calls (game thread only)
 		std::atomic<int> g_frame{ 0 };
+		std::atomic<ULONGLONG> g_boostUntil{ 0 };   // the wheel changed visibility: its animations are played faster until then
 
 		std::string Utf8(const UE::FString& a_s)
 		{
@@ -161,6 +164,7 @@ namespace quickkeys
 
 		void OnVisibility(UE::UObject* a_obj, std::uint8_t a_vis)
 		{
+			g_boostUntil.store(GetTickCount64() + 900);
 			if (a_vis == 4) {   // SelfHitTestInvisible: shown
 				if (menus::Active() != menus::Menu::kNone) {
 					g_panelObject.store(a_obj);
@@ -186,17 +190,17 @@ namespace quickkeys
 			} else if (a_fn == g_fnKeyIndex) {
 				if (a_params) { Emit(Event::kPointed, *static_cast<const std::int32_t*>(a_params)); }
 			} else if (a_fn == g_fnUpdateIcons || (a_fn == g_fnSetKeyPicture && !g_drawing)) {
-				g_gameDrew.store(true);
+				g_gameDrew.store(true); g_redrew.store(true);
 			} else if (!g_fnVisibility || !g_fnKeyIndex || !g_fnUpdateIcons || !g_fnSetKeyPicture) {
 				// still learning the UFunction pointers: one name compare per unknown function
 				const std::string n = pe::FunctionName(a_fn);
 				if (!g_fnUpdateIcons && n == "UpdateIcons") {
 					g_fnUpdateIcons = a_fn;
-					g_gameDrew.store(true);
+					g_gameDrew.store(true); g_redrew.store(true);
 				} else if (!g_fnSetKeyPicture && n == "SetQuickKeyByIndex") {
 					g_fnSetKeyPicture = a_fn;
 					if (!g_drawing) {
-						g_gameDrew.store(true);
+						g_gameDrew.store(true); g_redrew.store(true);
 					}
 				}
 				if (!g_fnVisibility && n == "OnVisibilityChangedEvent") {
@@ -251,13 +255,76 @@ namespace quickkeys
 		}
 	}
 
+	namespace
+	{
+		// The object a field holds, if it is a WidgetAnimation: the field's 8 bytes are read as a pointer and its class compared with
+		// the engine's WidgetAnimation class - inside a guard, because most fields of the widget are not pointers at all (a first
+		// version asked the object table about each of them and crashed on an integer: 0x20000000b, 2026-10-16).
+		UE::UObject* AnimationAt(const std::uint8_t* a_widget, std::int32_t a_offset, UE::UClass* a_animClass)
+		{
+			__try {
+				auto* o = *reinterpret_cast<UE::UObject* const*>(a_widget + a_offset);
+				const auto raw = reinterpret_cast<std::uintptr_t>(o);
+				if (raw < 0x10000 || raw > 0x00007FFFFFFFFFFF || (raw & 7) != 0) return nullptr;
+				return o->GetClass() == a_animClass ? o : nullptr;
+			} __except (GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH) {
+				return nullptr;
+			}
+		}
+	}
+
+	bool Animating()
+	{
+		return GetTickCount64() <= g_boostUntil.load();
+	}
+
+	void BoostAnimations()
+	{
+		const int pct = settings::Get().animSpeedPercent;
+		if (pct <= 100 || GetTickCount64() > g_boostUntil.load()) return;
+		auto* w = VisibleWheel();
+		if (!w || !reflect::Ok()) return;
+		static std::vector<std::int32_t> s_offsets;   // the wheel class's object fields that are widget animations, found once
+		static UE::UClass*               s_class = nullptr;
+		if (s_class != w->GetClass()) {
+			s_class = w->GetClass();
+			s_offsets.clear();
+			static auto* animClass = UE::StaticFindObject<UE::UClass>(nullptr, nullptr, L"/Script/UMG.WidgetAnimation");
+			if (animClass) {
+				for (const auto& [name, off] : reflect::Fields(reinterpret_cast<UE::UStruct*>(s_class))) {
+					if (AnimationAt(reinterpret_cast<const std::uint8_t*>(w), off, animClass)) {
+						s_offsets.push_back(off);
+						logger::info("quick keys: widget animation {} (played at {}%)", name, pct);
+					}
+				}
+			}
+			if (s_offsets.empty()) logger::info("quick keys: the wheel widget has no animation fields to speed up");
+		}
+		const float speed = static_cast<float>(pct) / 100.0f;
+		for (const auto off : s_offsets) {
+			static auto* animClass2 = UE::StaticFindObject<UE::UClass>(nullptr, nullptr, L"/Script/UMG.WidgetAnimation");
+			auto* anim = animClass2 ? AnimationAt(reinterpret_cast<const std::uint8_t*>(w), off, animClass2) : nullptr;
+			if (!anim) continue;
+			ui::Call c(w, L"SetPlaybackSpeed");
+			if (!c) return;
+			c.Set("InAnimation", anim);
+			c.Set("PlaybackSpeed", speed);
+			c.RunGuarded();
+		}
+	}
+
 	void CancelChoice()
 	{
 		if (auto* f = KeyIndexField()) {
 			// KeyIndex is already the slot number as drawn (1 = top, the game's key = number - 1; 0 / -1 = none). The old
 			// message added one more ("pointed at slot 3" while the pad said slot 2, 2026-10-01 01:50:55).
-			logger::info("quick keys: choice cancelled (the view model pointed at {})",
+			static ULONGLONG s_said = 0;
+			const ULONGLONG  nowTick = GetTickCount64();
+			if (nowTick - s_said >= 1000) {   // at most once a second: the radial keeps the choice clear every read while it closes
+				s_said = nowTick;
+				logger::info("quick keys: choice cancelled (the view model pointed at {})",
 				*f >= 1 && *f <= 8 ? std::format("slot {}", *f) : std::string("no slot"));
+			}
 			*f = -1;
 		}
 		std::scoped_lock l(g_statusLock);
@@ -439,6 +506,8 @@ namespace quickkeys
 		}
 		return n;
 	}
+
+	bool TakeRedrew() { return g_redrew.exchange(false); }
 
 	bool TakeGameDrew()
 	{

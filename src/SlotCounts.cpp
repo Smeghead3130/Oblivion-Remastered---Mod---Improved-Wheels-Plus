@@ -1,6 +1,8 @@
 #include "SlotCounts.h"
 
+#include "QuickKeys.h"
 #include "Reflect.h"
+#include "Settings.h"
 #include "Ui.h"
 #include "Wheels.h"
 
@@ -12,17 +14,28 @@ namespace slotcounts
 	{
 		// where a slot circle's middle sits on the wheel picture, as a share of half its width (measured on the owner's
 		// screenshot of 2026-09-30 03:38:46: the slot centres about 0.71 of the way out), and the label just below it
-		constexpr double kSlotRadius = 0.71;
-		constexpr double kBelow = 0.11;
-		constexpr double kTextScale = 0.6;
+		// where a slot circle's middle sits on the wheel picture, as a share of half its width (measured on the owner's screenshot of
+		// 2026-09-30: the slot centres about 0.71 of the way out), the counter just below it, and the text sizes - INI [Display]
+		double      SlotRadius() { return settings::Get().display.cellRingPercent / 100.0; }
+		double      Below() { return settings::Get().display.countBelowPercent / 100.0; }
+		double      TextScale() { return settings::Get().display.countTextPercent / 100.0; }
+		double      CentreScale() { return settings::Get().display.centreTextPercent / 100.0; }
+		std::size_t CentreLine() { return static_cast<std::size_t>(settings::Get().display.centreLineChars); }
 
 		reflect::Handle g_root;
 		std::array<reflect::Handle, 8> g_label, g_slot;
 		std::array<std::string, 8> g_text;
+		constexpr int   kCentreLines = 4;
+		std::array<reflect::Handle, kCentreLines> g_centre, g_centreSlot;   // the Magic wheel's centre name: one label a line, each centred
+		std::array<std::string, kCentreLines>     g_centreShown;
+		std::vector<std::string>                  g_centreWanted;
+		double          g_cw = -1, g_ch = -1;
+		int             g_centreN = -1;   // lines placed
 		int       g_builds = 0;
 		ULONGLONG g_lastBuild = 0, g_next = 0;
 		std::uint32_t g_gen = 0;   // wheels::Generation() at the last text update
 		bool      g_shown = false;
+		wheels::Wheel g_wheel = wheels::Wheel::kEquipment;
 		double    g_x = -1e9, g_y = -1e9, g_w = -1;
 
 		void White(UE::UObject* a_label)
@@ -75,15 +88,31 @@ namespace slotcounts
 				const bool yes = true;
 				ui::CallFirst(slot, L"SetAutoSize", &yes, sizeof(yes));
 				ui::Vec2(label, L"SetRenderTransformPivot", 0.5, 0.5);
-				ui::Vec2(label, L"SetRenderScale", kTextScale, kTextScale);
+				ui::Vec2(label, L"SetRenderScale", TextScale(), TextScale());
 				g_label[static_cast<std::size_t>(k)] = reflect::Hold(label);
 				g_slot[static_cast<std::size_t>(k)] = reflect::Hold(slot);
 				g_text[static_cast<std::size_t>(k)] = "\x01";   // matches no real text: the first Show sets every label
+			}
+			for (int i = 0; i < kCentreLines; ++i) {   // the centre name: a label a line, each centred on the middle of the wheel
+				UE::UObject* slot = nullptr;
+				auto* label = ui::AddToCanvas(canvas, L"/Game/UI/Modern/Prefabs/WBP_AltarTextBlock.WBP_AltarTextBlock_C",
+					(L"IwmCentre" + n + L"_" + std::to_wstring(i)).c_str(), &slot);
+				if (!label || !slot) break;
+				ui::Anchors(slot, 0, 0, 0, 0);
+				ui::Vec2(slot, L"SetAlignment", 0.5, 0.5);
+				const bool fit = true;
+				ui::CallFirst(slot, L"SetAutoSize", &fit, sizeof(fit));
+				ui::Vec2(label, L"SetRenderTransformPivot", 0.5, 0.5);
+				ui::Vec2(label, L"SetRenderScale", CentreScale(), CentreScale());
+				g_centre[static_cast<std::size_t>(i)] = reflect::Hold(label);
+				g_centreSlot[static_cast<std::size_t>(i)] = reflect::Hold(slot);
+				g_centreShown[static_cast<std::size_t>(i)] = std::string(1, static_cast<char>(1));
 			}
 			ui::Call vp(root, L"AddToViewport");
 			vp.Set<std::int32_t>("ZOrder", 61);   // over the wheel and its name
 			vp.Run();
 			for (auto& h : g_label) White(reflect::Get(h));
+			for (auto& h : g_centre) if (auto* c = reflect::Get(h)) White(c);
 			ui::Visible(root, false);
 			g_root = reflect::Hold(root);
 			g_shown = false;
@@ -93,13 +122,15 @@ namespace slotcounts
 		}
 	}
 
-	void Show(UE::UObject* a_gameWheelImage)
+	void Show(UE::UObject* a_gameWheelImage, wheels::Wheel a_wheel)
 	{
 		// every 100 ms (the inventory walk is not free) - and at once whenever a wheel changed (Generation moves with
 		// every LT / RT step, assign and removal), so the counter follows LT / RT on the read after the press
 		const ULONGLONG now = GetTickCount64();
 		const auto gen = wheels::Generation();
-		if (now < g_next && gen == g_gen) return;
+		const bool sameWheel = a_wheel == g_wheel;
+		if (now < g_next && gen == g_gen && sameWheel && !quickkeys::Animating()) return;
+		g_wheel = a_wheel;
 		g_next = now + 100;
 		g_gen = gen;
 		if (!reflect::Get(g_root) && !Build()) return;
@@ -114,17 +145,29 @@ namespace slotcounts
 			const double half = w * 0.5, cx = x + half, cy = y + h * 0.5;
 			for (int k = 0; k < 8; ++k) {
 				const double a = k * 45.0 * std::numbers::pi / 180.0;   // slot k+1: 45 degrees apart, clockwise from the top
-				const double px = cx + std::sin(a) * kSlotRadius * half;
-				const double py = cy - std::cos(a) * kSlotRadius * half + kBelow * half;
+				const double px = cx + std::sin(a) * SlotRadius() * half;
+				const double py = cy - std::cos(a) * SlotRadius() * half + Below() * half;
 				if (auto* s = reflect::Get(g_slot[static_cast<std::size_t>(k)])) ui::Vec2(s, L"SetPosition", px, py);
 			}
 			g_x = x, g_y = y, g_w = w;
+		}
+		{   // the centre name's lines: centred on the middle of the wheel, one under another
+			const int n = static_cast<int>(g_centreWanted.size());
+			if (std::abs(w - g_cw) > 0.5 || std::abs(h - g_ch) > 0.5 || n != g_centreN) {
+				const double pitch = w * 0.047;   // a line's height at the scale used
+				for (int i = 0; i < kCentreLines; ++i) {
+					if (auto* cs = reflect::Get(g_centreSlot[static_cast<std::size_t>(i)])) {
+						ui::Vec2(cs, L"SetPosition", x + w * 0.5, y + h * 0.5 + (i - (std::max(n, 1) - 1) * 0.5) * pitch);
+					}
+				}
+				g_cw = w, g_ch = h, g_centreN = n;
+			}
 		}
 		// what: the shown entry's place out of the slot's places, "2/5" - the owner, 2026-10-01: "whether I'm on one out of
 		// five, two out of five ..." - and "0/5" for an empty slot ("slot number 3 and 1, which are actually empty, have no
 		// indicator at all of like zero out of five"); "-/5" when the slot's key holds none of its entries. Every label gets
 		// text: an empty string left two labels showing the widget's placeholder "Text Block" (slots 7 and 8).
-		const auto counts = wheels::SlotCounts(wheels::Wheel::kEquipment);
+		const auto counts = wheels::SlotCounts(a_wheel);
 		const int  cap = wheels::SlotCap();
 		for (int k = 0; k < 8; ++k) {
 			const auto& c = counts[static_cast<std::size_t>(k)];
@@ -134,10 +177,40 @@ namespace slotcounts
 				g_text[static_cast<std::size_t>(k)] = text;
 			}
 		}
+		for (int i = 0; i < kCentreLines; ++i) {
+			auto* centre = reflect::Get(g_centre[static_cast<std::size_t>(i)]);
+			if (!centre) continue;
+			const std::string want = a_wheel == wheels::Wheel::kMagic && i < static_cast<int>(g_centreWanted.size()) ? g_centreWanted[static_cast<std::size_t>(i)] : std::string(" ");
+			if (want != g_centreShown[static_cast<std::size_t>(i)]) {
+				SetText(centre, want.empty() ? std::string(" ") : want);
+				g_centreShown[static_cast<std::size_t>(i)] = want;
+			}
+		}
 		if (!g_shown) {
 			ui::Visible(root, true);
 			g_shown = true;
 		}
+	}
+
+	void SetCentre(const std::string& a_text)
+	{
+		// split by hand into lines the hole holds, each its own centred label (the text block's own wrap and centring did not take)
+		std::vector<std::string> lines;
+		std::string              line;
+		std::size_t              i = 0;
+		while (i < a_text.size()) {
+			const auto        sp = a_text.find(' ', i);
+			const std::string word = a_text.substr(i, sp == std::string::npos ? std::string::npos : sp - i);
+			if (!line.empty() && line.size() + 1 + word.size() > CentreLine() && static_cast<int>(lines.size()) < kCentreLines - 1) {
+				lines.push_back(line);
+				line.clear();
+			}
+			line += (line.empty() ? "" : " ") + word;
+			if (sp == std::string::npos) break;
+			i = sp + 1;
+		}
+		if (!line.empty()) lines.push_back(line);
+		g_centreWanted = std::move(lines);
 	}
 
 	void Hide()

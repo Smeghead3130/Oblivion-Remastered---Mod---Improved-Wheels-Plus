@@ -16,6 +16,9 @@ namespace pe
 	// Watches calls on objects whose class is exactly a_class. False (logged) when its vtable cannot be swapped.
 	bool Watch(UE::UClass* a_class, Handler a_handler);
 
+	// The same, but the handler runs AFTER the function body (the object may be gone by then: do not rely on it beyond the call).
+	bool WatchPost(UE::UClass* a_class, Handler a_handler);
+
 	// The UFunction's name, UTF-8 (cheap enough for a learn-once compare per UFunction pointer).
 	std::string FunctionName(UE::UFunction* a_fn);
 

@@ -39,6 +39,8 @@ namespace quickkeys
 	// change through ProcessEvent, so in the magic menu this is how its panel is known to be up. Game thread.
 	bool AnyWheelVisible();
 	UE::UObject* VisibleWheel();   // the first wheel widget whose own visibility says shown, or nullptr
+	bool Animating();         // the wheel changed visibility within the last ~0.9 s: it is popping up or out, so overlays follow it every read
+	void BoostAnimations();   // every read: while the wheel is opening or closing, its widget animations play faster (INI uAnimSpeedPercent)
 	int  PointedSlot();  // the slot under the pointer on whichever is showing, -1 for none
 	void CancelChoice(); // B on the HUD radial: the view model points at no slot, so the close uses nothing
 	// the centre rest snap: CancelChoice, the Blueprint's pointed key (QuickKeyID / CurrentScaledKeyID / HoveredKeyID)
@@ -62,6 +64,7 @@ namespace quickkeys
 	// draws straight onto every wheel widget - only the slots where a_icons differs from a_shown (what the widgets
 	// show now); returns the pictures set
 	int   DrawIcons(const Icons& a_icons, const Icons& a_shown);
+	bool  TakeRedrew();     // the game redrew its own pictures since the last call (the overlay puts its own right at once)
 	bool  TakeGameDrew();   // the game drew its own pictures since the last call (the widgets show the view model's again)
 
 	struct Status

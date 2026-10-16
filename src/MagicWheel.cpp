@@ -185,7 +185,7 @@ namespace magicwheel
 			logger::info("magic wheel: hidden ({})", a_why);
 		}
 
-		void Show(UE::UObject* a_wheel)
+		void Show(UE::UObject* a_wheel, int a_mode)   // 0 Magic spells, 1 the Equipment keys (the Inventory panel), 2 the Ammo wheel
 		{
 			auto* gameImg = GameImage(a_wheel);
 			if (!gameImg) {
@@ -202,7 +202,7 @@ namespace magicwheel
 
 			// over the game's picture, exactly
 			const ULONGLONG now = GetTickCount64();
-			if (now >= g_nextMeasure || !g_shown) {
+			if (quickkeys::Animating() || now >= g_nextMeasure || !g_shown) {   // every read while the game's wheel pops up or out: our picture follows it, not 100 ms behind
 				g_nextMeasure = now + 100;
 				double x = 0, y = 0, w = 0, h = 0;
 				if (!ui::Measure(gameImg, x, y, w, h)) {
@@ -231,10 +231,18 @@ namespace magicwheel
 				g_gameImg = reflect::Hold(gameImg);
 			}
 
-			// the Magic wheel's eight
-			const auto spells = wheels::MagicSlots();
+			// the eight: the Magic wheel's spells, or (the Inventory's assign panel) the items on the game's keys - the game redraws its
+			// own wheel as an assign lands and, drawn under ours, its pictures flashed through (the owner, 2026-10-16)
+			static int s_mode = 0;
+			if (s_mode != a_mode) {
+				s_mode = a_mode;
+				g_tex.fill(nullptr);
+				g_op.fill(-1.0f);
+			}
+			const std::array<std::uint32_t, 8> spells = a_mode == 1 ? inventory::Keys() : a_mode == 2 ? wheels::AmmoSlots() : wheels::MagicSlots();
 			for (int k = 0; k < 8; ++k) {
-				auto* tex = spells[static_cast<std::size_t>(k)] ? rows::SpellIcon(spells[static_cast<std::size_t>(k)]) : nullptr;
+				const auto here = spells[static_cast<std::size_t>(k)];
+				auto* tex = here ? (a_mode != 0 ? rows::ItemIcon(here) : rows::SpellIcon(here)) : nullptr;
 				const std::wstring id = L"ID" + std::to_wstring(k + 1);
 				if (tex && tex != g_tex[static_cast<std::size_t>(k)]) {
 					ui::SetMidTexture(mid, (id + L"Texture").c_str(), tex);
@@ -287,7 +295,7 @@ namespace magicwheel
 		void HideSpellKeys(UE::UObject* a_wheel)
 		{
 			const ULONGLONG now = GetTickCount64();
-			if (now < g_nextEquip) return;
+			if (!quickkeys::TakeRedrew() && now < g_nextEquip) return;
 			g_nextEquip = now + 100;   // the inventory walk is not free
 			auto* gameImg = GameImage(a_wheel);
 			auto* gameMid = gameImg ? ui::BrushResource(gameImg) : nullptr;
@@ -328,10 +336,18 @@ namespace magicwheel
 		const bool radial = quickkeys::RadialOpen();
 		const bool magic = (radial && wheels::Active() == wheels::Wheel::kMagic) || (menu == menus::Menu::kMagic && pad::MagicPanelUp());
 		const bool equip = (radial && wheels::Active() == wheels::Wheel::kEquipment) || (menu == menus::Menu::kInventory && quickkeys::PanelOpen());
-		auto* wheel = magic || equip ? quickkeys::VisibleWheel() : nullptr;
-		if (magic && wheel) {
-			slotcounts::Hide();
-			Show(wheel);
+		auto* wheel = magic || equip || (radial && wheels::Active() == wheels::Wheel::kAmmo) ? quickkeys::VisibleWheel() : nullptr;
+		const bool equipPanel = !magic && menu == menus::Menu::kInventory && quickkeys::PanelOpen();   // the Inventory's assign panel
+		const bool ammoView = radial && wheels::Active() == wheels::Wheel::kAmmo;                      // the radial's third view, with a bow held
+		if (ammoView && !wheel) wheel = quickkeys::VisibleWheel();
+		if ((magic || equipPanel || ammoView) && wheel) {
+			const int mode = ammoView ? 2 : equipPanel ? 1 : 0;
+			Show(wheel, mode);
+			if (auto* img = GameImage(wheel)) {
+				slotcounts::Show(img, mode == 2 ? wheels::Wheel::kAmmo : mode == 1 ? wheels::Wheel::kEquipment : wheels::Wheel::kMagic);   // "2/3" on each slot
+			} else {
+				slotcounts::Hide();
+			}
 			return;
 		}
 		Hide(magic ? "no wheel on screen" : "the Magic wheel is not up");

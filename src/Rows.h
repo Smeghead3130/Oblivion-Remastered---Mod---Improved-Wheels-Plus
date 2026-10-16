@@ -24,8 +24,11 @@ namespace rows
 	UE::UObject* ItemIcon(std::uint32_t a_formID);    // the icon a row showed for it this session (nullptr = not seen)
 	UE::UObject* SpellIcon(std::uint32_t a_formID);
 
+	bool          PlayerHasSpell(std::uint32_t a_formID);   // the player knows that spell
+	std::size_t   PlayerSpellCount();                       // how many spells the player knows (0 while the list is not built)
 	std::uint32_t SpellByName(const std::string& a_name);   // the player's spell of that name (0 = none)
 	std::string   SpellName(std::uint32_t a_formID);
+	std::string   DisplayName(std::uint32_t a_formID);   // a spell the player made: the name the magic menu showed for it (kept in SpellNames.txt); "" = not seen yet
 
 	// the favourites column (Favourites.cpp): every live inventory row now, the key its name reads (a string-table key,
 	// else the text) and the item it shows; true from TakeInventoryRowsChanged when a row fired an event since the last ask
@@ -34,6 +37,7 @@ namespace rows
 	std::uint32_t             InventoryRowForm(UE::UObject* a_row);
 	bool                      TakeInventoryRowsChanged();
 	UE::UClass*               InventoryRowClass();
+	UE::UClass*               MagicRowClass();
 	// the same for the magic menu's rows (their spell: the player's spell of the row's name)
 	std::vector<UE::UObject*> LiveMagicRows();
 	std::string               MagicRowKey(UE::UObject* a_row);

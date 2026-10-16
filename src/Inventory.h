@@ -17,6 +17,7 @@ namespace inventory
 	using KeyMap = std::array<std::uint32_t, kSlots>;
 	KeyMap Keys();
 
+	bool Ready();                                     // the inventory list can be read now
 	bool Has(std::uint32_t a_formID);                 // the player carries at least one
 	std::string NameOf(std::uint32_t a_formID);
 	std::uint32_t FindByName(const std::string& a_name);   // a carried item whose full name (a "LOC_FN_" key, or a custom name) matches

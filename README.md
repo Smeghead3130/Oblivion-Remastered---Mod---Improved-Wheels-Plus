@@ -1,3 +1,11 @@
+# Improved Wheel Menu - Controller and Keyboard Support (Oblivion Remastered)
+
+A fork of [Improved Wheel Menu](https://github.com/ApocryphaRealm/ImprovedWheelMenuOR) by ApocryphaRealm, version **1.1.0** of this fork.
+
+**The main addition is keyboard support:** the whole wheel menu (the inventory, Magic and ammo wheels, favouriting, the assign panel) works from the keyboard, with or without a controller. Every key is configurable in the `[Keyboard]` section of `ImprovedWheelMenu.ini`, and so is every other setting. On top of that it adds the Select/L3/LB controller rules, clearing a slot, spells you made, slot counters and names on the Magic wheel, and per-character wheels. **Clear your existing wheel before installing** (instructions in [`dist/README.txt`](dist/README.txt)). See [`CHANGELOG.md`](CHANGELOG.md). The DLL keeps the original's name, so install it instead of the original. Original authorship and commit history are kept; this fork is GPL-3.0-or-later like the original.
+
+---
+
 # Improved Wheel Menu (Oblivion Remastered)
 
 An OBSE64 plugin that makes Oblivion Remastered's own quick-key radial a full wheel menu: eight slots that each hold

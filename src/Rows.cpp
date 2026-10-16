@@ -3,8 +3,11 @@
 #include "PEHook.h"
 #include "Inventory.h"
 #include "Reflect.h"
+#include "Settings.h"
 #include "Ui.h"
 
+#include <filesystem>
+#include <fstream>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -22,7 +25,7 @@ namespace rows
 		{
 			UE::UClass*  rowClass = nullptr;
 			std::int32_t properties = -1;   // the row widget's Properties struct
-			std::int32_t name = -1, icon = -1, form = -1;
+			std::int32_t name = -1, icon = -1, form = -1, index = -1;   // index: InventoryIndex
 			std::int32_t inContainer = -1, playerItem = -1;   // bIsInContainerMenu, bIsInventoryItem (inventory rows)
 			reflect::Handle highlighted;   // kept across frames: resolved through its slot before every use
 			UE::UFunction* fnSelection = nullptr;   // this row class's BP_OnItemSelectionChanged
@@ -56,6 +59,8 @@ namespace rows
 			auto* text = reflect::At<UE::FText>(props, a_kind.name);
 			return text ? reflect::TextKey(*text) : std::string();
 		}
+
+		std::uint32_t SpellOfRow(Kind& a_kind, UE::UObject* a_row);   // defined below, once the player's spell list is reachable
 
 		// An inventory row's item. Its Properties.form is null in the player's inventory (read 2026-09-29: Iron Arrow,
 		// bIsInventoryItem true, form null), so the name decides: its string-table key is the item's full name in the
@@ -113,7 +118,7 @@ namespace rows
 					it = g_magic.seen.erase(it);
 					continue;
 				}
-				if (const auto id = SpellByName(KeyOfRow(g_magic, row))) {
+				if (const auto id = SpellOfRow(g_magic, row)) {
 					if (auto* icon = IconOfRow(g_magic, row); icon && reflect::IsLive(icon)) {
 						g_spellIcons[id] = reflect::Hold(icon);
 					}
@@ -158,6 +163,7 @@ namespace rows
 			a_kind.properties = reflect::Offset(cls, "Properties");
 			a_kind.name = reflect::Offset(props, "Name");
 			a_kind.icon = reflect::Offset(props, "Icon");
+			a_kind.index = reflect::Offset(props, "InventoryIndex");
 			a_kind.form = a_hasForm ? reflect::Offset(props, "form") : -1;
 			if (a_hasForm) {
 				a_kind.inContainer = reflect::Offset(props, "bIsInContainerMenu");
@@ -186,6 +192,262 @@ namespace rows
 			}
 			return static_cast<RE::TESSpellList*>(static_cast<RE::TESNPC*>(base));
 		}
+		// the row's InventoryIndex (-1 when unreadable)
+		int IndexOfRow(Kind& a_kind, UE::UObject* a_row)
+		{
+			void* props = PropsOf(a_kind, a_row);
+			const auto* v = a_kind.index >= 0 ? reflect::At<std::int32_t>(props, a_kind.index) : nullptr;
+			return v ? *v : -1;
+		}
+
+		// where a spell sits in the player's list (-1 = not in it)
+		int ListPosition(std::uint32_t a_formID)
+		{
+			auto* list = PlayerSpells();
+			if (!list || !a_formID) {
+				return -1;
+			}
+			int i = 0;
+			for (RE::SpellItem* spell : list->spells) {
+				if (spell && spell->GetFormID() == a_formID) {
+					return i;
+				}
+				++i;
+			}
+			return -1;
+		}
+		std::uint32_t SpellAtPosition(int a_pos)
+		{
+			auto* list = PlayerSpells();
+			if (!list || a_pos < 0) {
+				return 0;
+			}
+			int i = 0;
+			for (RE::SpellItem* spell : list->spells) {
+				if (i++ == a_pos) {
+					return spell ? spell->GetFormID() : 0;
+				}
+			}
+			return 0;
+		}
+
+		// A magic row's InventoryIndex is its spell's place in the player's list, counted from 1: proven live on the rows whose spell the
+		// string-table key names (the vanilla ones), then used for the spells the player made, which have no key (their full
+		// name is a placeholder "UI_UserInputText_..." and the row's text is not from a table) and may share names.
+		std::unordered_map<int, bool> g_indexAgrees;   // InventoryIndex -> did the key's spell sit at that place
+		bool                          g_indexTrusted = false;
+		bool                          g_indexJudged = false;
+
+		void JudgeIndex()
+		{
+			int yes = 0;
+			for (const auto& [idx, ok] : g_indexAgrees) {
+				yes += ok ? 1 : 0;
+			}
+			const int  total = static_cast<int>(g_indexAgrees.size());
+			const bool trusted = total >= 12 && yes * 10 >= total * 9;
+			if (trusted != g_indexTrusted || !g_indexJudged) {
+				if (total >= 12 || g_indexJudged) {
+					logger::info("rows: magic row InventoryIndex {} the player's list order ({} of {} keyed rows agree) - {}",
+						trusted ? "follows" : "does not follow", yes, total, trusted ? "used for spells without a key" : "not used");
+					g_indexJudged = true;
+				}
+				g_indexTrusted = trusted;
+			}
+		}
+
+		// ---- the text a player typed for an item or spell ----
+		// The game keeps it in UVAltarUserInputTextSubsystem > UserInputTextSaveData > UserInputTextsMap (a TMap of FString key
+		// -> FText, keyed by the placeholder "UI_UserInputText_..." that the form's full name holds). The map is read raw: its
+		// element array first (TSparseArray data: pointer, count, max), each element a key string and a text, the element
+		// size found by trying the likely strides and keeping the one whose elements read as keys. Every read is fault-guarded.
+		struct RawArr { std::uint8_t* data; std::int32_t num; std::int32_t max; };
+
+		// a key string of the form UI_UserInputText... at a_el: copied into a_out (UTF-16, a_cap wchar); false if it is not one
+		bool ReadKeyGuarded(const std::uint8_t* a_el, wchar_t* a_out, int a_cap)
+		{
+			__try {
+				const auto* chars = *reinterpret_cast<const wchar_t* const*>(a_el);
+				const auto  num = *reinterpret_cast<const std::int32_t*>(a_el + 8);
+				if (reinterpret_cast<std::uintptr_t>(chars) < 0x10000 || num < 16 || num >= a_cap) return false;
+				for (int i = 0; i < num; ++i) a_out[i] = chars[i];
+				a_out[num] = 0;
+				return a_out[num - 1] == 0 && std::wcsncmp(a_out, L"UI_UserInputText", 16) == 0;
+			} __except (GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH) {
+				return false;
+			}
+		}
+
+		void TextToBuf(const UE::FText* a_text, char* a_out, int a_cap)
+		{
+			const std::string t = reflect::Text(*a_text);
+			const int n = static_cast<int>(std::min<std::size_t>(t.size(), static_cast<std::size_t>(a_cap - 1)));
+			std::memcpy(a_out, t.data(), static_cast<std::size_t>(n));
+			a_out[n] = 0;
+		}
+
+		bool TextToBufGuarded(const UE::FText* a_text, char* a_out, int a_cap)
+		{
+			__try {
+				TextToBuf(a_text, a_out, a_cap);
+				return true;
+			} __except (GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH) {
+				return false;
+			}
+		}
+
+		bool ReadArrGuarded(const std::uint8_t* a_map, RawArr* a_out)
+		{
+			__try {
+				*a_out = *reinterpret_cast<const RawArr*>(a_map);
+				return a_out->data && a_out->num > 0 && a_out->num < 100000;
+			} __except (GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH) {
+				return false;
+			}
+		}
+
+		std::unordered_map<std::string, std::string> g_typed;   // placeholder -> the text the player typed
+		UE::UObject*  g_saveData = nullptr;
+		std::int32_t  g_saveDataSlot = -1;
+		ULONGLONG     g_typedAt = 0;
+		std::size_t   g_typedStride = 0;
+
+		UE::UObject* FindSaveData()
+		{
+			if (g_saveData && reflect::Get(g_saveData, g_saveDataSlot)) return g_saveData;
+			g_saveData = nullptr;
+			auto* arr = UE::FUObjectArray::GetSingleton();
+			if (!arr) return nullptr;
+			arr->LockInternalArray();
+			const std::int32_t n = arr->GetObjectArrayNum();
+			for (std::int32_t i = 0; i < n && !g_saveData; ++i) {
+				auto* item = arr->IndexToObject(i);
+				if (!item || !item->object) continue;
+				auto* o = reinterpret_cast<UE::UObject*>(item->object);
+				if (pe::Utf8(o->GetClass()->GetFName().ToString()) == "UserInputTextSaveData" && !pe::Utf8(o->GetFName().ToString()).starts_with("Default__")) {
+					g_saveData = o;
+					g_saveDataSlot = i;
+				}
+			}
+			arr->UnlockInternalArray();
+			return g_saveData;
+		}
+
+		void LoadTyped()
+		{
+			auto* sd = FindSaveData();
+			if (!sd) return;
+			const auto off = reflect::Offset(reinterpret_cast<UE::UStruct*>(sd->GetClass()), "UserInputTextsMap");
+			if (off < 0) return;
+			RawArr arr{};
+			if (!ReadArrGuarded(reinterpret_cast<const std::uint8_t*>(sd) + off, &arr)) return;
+			// the stride: whichever of the likely sizes lets the most of the first elements read as keys
+			std::size_t best = 0;
+			int         bestHits = 0;
+			for (const std::size_t stride : { std::size_t(48), std::size_t(56), std::size_t(40), std::size_t(64), std::size_t(32) }) {
+				int hits = 0;
+				wchar_t key[160];
+				for (int i = 0; i < std::min(arr.num, 24); ++i) {
+					hits += ReadKeyGuarded(arr.data + static_cast<std::size_t>(i) * stride, key, 160) ? 1 : 0;
+				}
+				if (hits > bestHits) bestHits = hits, best = stride;
+			}
+			if (!best) return;
+			std::unordered_map<std::string, std::string> fresh;
+			for (int i = 0; i < arr.num; ++i) {
+				const auto* el = arr.data + static_cast<std::size_t>(i) * best;
+				wchar_t key[160];
+				if (!ReadKeyGuarded(el, key, 160)) continue;
+				char text[256];
+				if (!TextToBufGuarded(reinterpret_cast<const UE::FText*>(el + 16), text, 256)) continue;
+				std::string k;
+				for (const wchar_t* c = key; *c; ++c) k.push_back(static_cast<char>(*c));
+				fresh[k] = text;
+			}
+			if (best != g_typedStride || fresh.size() != g_typed.size()) {
+				logger::info("rows: the player's typed texts - {} read (element size {}, {} slots)", fresh.size(), best, arr.num);
+				int shown = 0;
+				for (const auto& [k, v] : fresh) {
+					if (shown++ < 4) logger::info("rows:   {} = \"{}\"", k, v);
+				}
+			}
+			g_typedStride = best;
+			g_typed = std::move(fresh);
+		}
+
+		// the text typed for a placeholder name (empty = unknown); re-read at most every 2 s when the key is not in the copy
+		std::string TypedText(const std::string& a_placeholder)
+		{
+			if (const auto it = g_typed.find(a_placeholder); it != g_typed.end()) return it->second;
+			const ULONGLONG now = GetTickCount64();
+			if (now - g_typedAt >= 2000) {
+				g_typedAt = now;
+				LoadTyped();
+				if (const auto it = g_typed.find(a_placeholder); it != g_typed.end()) return it->second;
+			}
+			return {};
+		}
+
+		// The name the menus show for a spell the player made: the game keeps only a placeholder ("UI_UserInputText_...") in
+		// the form, the menu row carries the text. Learned from the rows, kept across sessions in SpellNames.txt.
+		std::unordered_map<std::uint32_t, std::string> g_displayNames;
+		bool                                           g_namesLoaded = false;
+
+		std::filesystem::path NamesFile() { return settings::PluginFolder() / L"ImprovedWheelMenu" / L"SpellNames.txt"; }
+
+		void LoadNames()
+		{
+			if (g_namesLoaded) return;
+			g_namesLoaded = true;
+			std::ifstream f(NamesFile());
+			std::string   line;
+			while (std::getline(f, line)) {
+				const auto tab = line.find('\t');
+				if (tab == std::string::npos || tab < 3) continue;
+				try {
+					g_displayNames[static_cast<std::uint32_t>(std::stoul(line.substr(0, tab), nullptr, 16))] = line.substr(tab + 1);
+				} catch (...) {}
+			}
+		}
+
+		void RememberName(std::uint32_t a_id, const std::string& a_name)
+		{
+			LoadNames();
+			if (a_name.empty()) return;
+			auto& slot = g_displayNames[a_id];
+			if (slot == a_name) return;
+			slot = a_name;
+			std::error_code ec;
+			std::filesystem::create_directories(NamesFile().parent_path(), ec);
+			std::ofstream f(NamesFile(), std::ios::trunc);
+			for (const auto& [id, name] : g_displayNames) f << std::format("{:08X}", id) << '\t' << name << '\n';
+		}
+
+		// A magic row's spell. The string-table key is the spell's full name in the game data; a spell the player made has no
+		// key, so the row's index decides (never its name: two spells may share one).
+		std::uint32_t SpellOfRow(Kind& a_kind, UE::UObject* a_row)
+		{
+			const int idx = IndexOfRow(a_kind, a_row);
+			if (const auto id = SpellByName(KeyOfRow(a_kind, a_row))) {
+				if (idx >= 0) {
+					const int pos = ListPosition(id);
+					if (g_indexAgrees.insert_or_assign(idx, pos == idx - 1).second) {
+						JudgeIndex();
+					}
+				}
+				return id;
+			}
+			if (idx >= 0 && g_indexTrusted) {
+				const auto id = SpellAtPosition(idx - 1);   // InventoryIndex is the list position plus one (read 2026-10-16, 50 of 50 keyed rows)
+				if (id && (id >> 24) == 0xFF) {
+					RememberName(id, NameOfRow(a_kind, a_row));
+					return id;   // a spell made in the game
+				}
+			}
+			return SpellByName(NameOfRow(a_kind, a_row));
+		}
+
+
 	}
 
 	void Tick()
@@ -221,6 +483,7 @@ namespace rows
 	bool TakeInventoryRowsChanged() { return g_rowsChanged.exchange(false, std::memory_order_relaxed); }
 
 	UE::UClass* InventoryRowClass() { return g_inventory.properties >= 0 ? g_inventory.rowClass : nullptr; }
+	UE::UClass* MagicRowClass() { return g_magic.properties >= 0 ? g_magic.rowClass : nullptr; }
 
 	std::vector<UE::UObject*> LiveMagicRows()
 	{
@@ -243,7 +506,7 @@ namespace rows
 		return key.empty() ? NameOfRow(g_magic, a_row) : key;
 	}
 
-	std::uint32_t MagicRowSpell(UE::UObject* a_row) { return SpellByName(KeyOfRow(g_magic, a_row)); }
+	std::uint32_t MagicRowSpell(UE::UObject* a_row) { return SpellOfRow(g_magic, a_row); }
 
 	bool TakeMagicRowsChanged() { return g_magicRowsChanged.exchange(false, std::memory_order_relaxed); }
 
@@ -275,9 +538,9 @@ namespace rows
 		auto*             row = reflect::Get(g_magic.highlighted);
 		const std::string name = NameOfRow(g_magic, row);
 		const std::string key = KeyOfRow(g_magic, row);
-		const auto id = SpellByName(key);
-		logger::info("rows: highlighted magic row: \"{}\" (key {}; {})", name, key.empty() ? "none" : key,
-			id ? std::format("spell 0x{:08X}", id) : "not one of the player's spells");
+		const auto id = SpellOfRow(g_magic, row);
+		logger::info("rows: highlighted magic row: \"{}\" (key {}; {}) (row index {})", name, key.empty() ? "none" : key,
+			id ? std::format("spell 0x{:08X}", id) : "not one of the player's spells", IndexOfRow(g_magic, row));
 		return id;
 	}
 
@@ -451,6 +714,26 @@ namespace rows
 		return loaded;
 	}
 
+	bool PlayerHasSpell(std::uint32_t a_formID)
+	{
+		auto* list = PlayerSpells();
+		if (!list || !a_formID) return false;
+		for (RE::SpellItem* spell : list->spells) {
+			if (spell && spell->GetFormID() == a_formID) return true;
+		}
+		return false;
+	}
+
+	std::size_t PlayerSpellCount()
+	{
+		auto* list = PlayerSpells();
+		std::size_t n = 0;
+		if (list) {
+			for (RE::SpellItem* spell : list->spells) n += spell ? 1 : 0;
+		}
+		return n;
+	}
+
 	std::uint32_t SpellByName(const std::string& a_name)
 	{
 		if (a_name.empty()) {
@@ -471,6 +754,19 @@ namespace rows
 			}
 		}
 		return 0;
+	}
+
+	std::string DisplayName(std::uint32_t a_formID)
+	{
+		if (auto* form = RE::TESForm::LookupByID(a_formID)) {   // the placeholder is the form's full name: the game's own table of typed texts
+			const char* n = RE::TESFullName::GetFullName(form);
+			if (n && std::strncmp(n, "UI_UserInputText", 16) == 0) {
+				if (auto t = TypedText(n); !t.empty()) return t;
+			}
+		}
+		LoadNames();
+		const auto it = g_displayNames.find(a_formID);
+		return it == g_displayNames.end() ? std::string() : it->second;
 	}
 
 	std::string SpellName(std::uint32_t a_formID)

@@ -1,5 +1,6 @@
 #include "Wheels.h"
 
+#include "Ammo.h"
 #include "Inventory.h"
 #include "PEHook.h"
 #include "Reflect.h"
@@ -134,6 +135,19 @@ namespace wheels
 			g_generation.fetch_add(1, std::memory_order_relaxed);
 			const auto path = FileFor(a_name);
 			std::ifstream f(path);
+			// a file written before wheels were kept per character (named by the typed name only): the first character to load
+			// after the change takes it over, and it is put aside so no later character can
+			std::filesystem::path legacy;
+			if (!f) {
+				const auto hash = a_name.rfind(" #");
+				if (hash != std::string::npos) {
+					legacy = FileFor(a_name.substr(0, hash));
+					if (std::filesystem::exists(legacy)) {
+						f.open(legacy);
+						logger::info("wheels: {} takes over the wheels file written before they were kept per character ({})", a_name, legacy.filename().string());
+					}
+				}
+			}
 			if (!f) {
 				logger::info("wheels: no saved wheels for {} yet ({})", a_name, path.filename().string());
 				return;
@@ -160,6 +174,12 @@ namespace wheels
 				++rows;
 			}
 			logger::info("wheels: loaded {} slot(s) for {}", rows, a_name);
+			if (!legacy.empty() && std::filesystem::exists(legacy)) {
+				f.close();
+				Save();   // under the character's own name now
+				std::error_code ec;
+				std::filesystem::rename(legacy, legacy.string() + ".migrated", ec);
+			}
 		}
 
 		int IndexOf(const Slot& a_slot, std::uint32_t a_id)
@@ -276,6 +296,51 @@ namespace wheels
 			}
 		}
 
+		// What the wheels hold that THIS character cannot have (a save loaded after another, or a spell or item lost since): taken
+		// off, so nothing ever tries to use or draw a form the save does not have (the owner, 2026-10-16: "I think this is going to
+		// crash the game if I load a save in which I dont have the assets that are stored on the wheel"). Run once, a moment after
+		// a character loads, when the inventory and the spell list exist - never on a half-built player, which would empty a wheel.
+		//   Magic - the form must exist, be a spell, and be known to the player
+		//   Equipment / Ammo - the form must exist, and be carried
+		ULONGLONG g_sanitizeAt = 0;
+		bool      g_sanitized = true;
+
+		void Sanitize()
+		{
+			int removed = 0;
+			for (int w : { static_cast<int>(kEquip), static_cast<int>(kMagic), static_cast<int>(kAmmo) }) {
+				for (int s = 0; s < inventory::kSlots; ++s) {
+					Slot& slot = g_wheels[w][s];
+					if (slot.entries.empty()) continue;
+					const auto activeId = slot.active >= 0 && slot.active < static_cast<int>(slot.entries.size()) ? slot.entries[slot.active] : 0u;
+					std::vector<std::uint32_t> kept;
+					for (const auto id : slot.entries) {
+						bool ok = RE::TESForm::LookupByID(id) != nullptr;
+						if (ok && w == kMagic) {
+							ok = RE::TESForm::LookupByID<RE::SpellItem>(id) != nullptr && rows::PlayerHasSpell(id);
+						} else if (ok) {
+							ok = inventory::Has(id);
+						}
+						if (ok) {
+							kept.push_back(id);
+						} else {
+							++removed;
+							logger::info("wheels: {} 0x{:08X} taken off {} slot {} - this character does not have it", w == kMagic ? "spell" : "item", id, WheelName(w), s + 1);
+						}
+					}
+					if (kept.size() != slot.entries.size()) {
+						const auto at = std::find(kept.begin(), kept.end(), activeId);
+						slot.entries = std::move(kept);
+						slot.active = slot.entries.empty() ? -1 : at != slot.entries.end() ? static_cast<int>(at - slot.entries.begin()) : 0;
+					}
+				}
+			}
+			if (removed) {
+				logger::info("wheels: {} entr{} this character does not have taken off the wheels", removed, removed == 1 ? "y" : "ies");
+				Save();
+			}
+		}
+
 		bool EnsureLoaded()
 		{
 			if (!RE::PlayerCharacter::GetSingleton()) {
@@ -284,6 +349,13 @@ namespace wheels
 			const std::string name = inventory::PlayerName();
 			if (name != g_loadedFor) {
 				Load(name);
+				g_sanitized = false;
+				g_sanitizeAt = GetTickCount64() + 3000;   // let the character's inventory and spell list finish loading
+			}
+			if (!g_sanitized && GetTickCount64() >= g_sanitizeAt && inventory::Ready() && rows::PlayerSpellCount() > 0 &&
+				!AssignPending()) {
+				g_sanitized = true;
+				Sanitize();
 			}
 			// not while the game's own assign is watched: Settle reads what arrived on the key and decides ADDED / REMOVED /
 			// moved itself - reconciling first (the favourites column and the slot counters ask every 100 ms) took the
@@ -1242,6 +1314,27 @@ namespace wheels
 		}
 	}
 
+	void ClearSlot(Wheel a_wheel, int a_slot)
+	{
+		if (a_slot < 0 || a_slot >= inventory::kSlots || !EnsureLoaded()) {
+			return;
+		}
+		const int w = a_wheel == Wheel::kMagic ? kMagic : a_wheel == Wheel::kAmmo ? kAmmo : kEquip;
+		Slot& slot = g_wheels[w][a_slot];
+		if (slot.entries.empty()) {
+			logger::info("wheels: CLEAR {} slot {} - already empty", Name(a_wheel), a_slot + 1);
+			return;
+		}
+		const auto n = slot.entries.size();
+		while (!slot.entries.empty()) {
+			RemoveAt(w, a_slot, static_cast<int>(slot.entries.size()) - 1, "slot cleared (X held)");
+		}
+		slot.active = -1;
+		logger::info("wheels: CLEAR {} slot {} - {} entr{} removed", Name(a_wheel), a_slot + 1, n, n == 1 ? "y" : "ies");
+		Save();
+		Refresh();
+	}
+
 	void CycleEntry(Wheel a_wheel, int a_slot, int a_dir)
 	{
 		if (a_slot < 0) {
@@ -1283,11 +1376,35 @@ namespace wheels
 
 	void SwitchWheel(int a_dir)
 	{
-		const Wheel next = Active() == Wheel::kEquipment ? Wheel::kMagic : Wheel::kEquipment;   // two wheels: either way flips
+		// Equipment -> Magic -> (Ammo, while a bow is held) -> Equipment; left goes the other way round
+		std::vector<Wheel> order{ Wheel::kEquipment, Wheel::kMagic };
+		if (settings::Get().ammoWheel && ammo::BowHeld()) order.push_back(Wheel::kAmmo);
+		int at = 0;
+		for (int i = 0; i < static_cast<int>(order.size()); ++i) {
+			if (order[static_cast<std::size_t>(i)] == Active()) at = i;
+		}
+		const int  n = static_cast<int>(order.size());
+		const Wheel next = order[static_cast<std::size_t>((at + (a_dir > 0 ? 1 : n - 1)) % n)];
 		g_active.store(static_cast<int>(next));
 		logger::info("wheels: SWITCH {} -> the {} wheel is active", a_dir > 0 ? "right" : "left", Name(next));
 		if (quickkeys::RadialOpen() && EnsureLoaded()) {
 			ShowMagic(next == Wheel::kMagic);
+		}
+	}
+
+	void SetActive(Wheel a_wheel)
+	{
+		if (a_wheel == Wheel::kAmmo && !(settings::Get().ammoWheel && ammo::BowHeld())) {
+			logger::info("wheels: the Ammo wheel's button - no bow is held, nothing to show");
+			return;
+		}
+		if (a_wheel == Active()) {
+			return;
+		}
+		g_active.store(static_cast<int>(a_wheel));
+		logger::info("wheels: the {} wheel's own button - it is the active wheel", Name(a_wheel));
+		if (quickkeys::RadialOpen() && EnsureLoaded()) {
+			ShowMagic(a_wheel == Wheel::kMagic);
 		}
 	}
 
@@ -1377,6 +1494,24 @@ namespace wheels
 		PushHudSpellIcon(spell->GetFormID());
 	}
 
+	void UseAmmo(int a_slot)
+	{
+		if (a_slot < 0) {
+			logger::info("wheels: the Ammo wheel closed on no slot - nothing equipped");
+			return;
+		}
+		if (!EnsureLoaded()) {
+			return;
+		}
+		const Slot& slot = g_wheels[kAmmo][a_slot];
+		if (slot.active < 0 || slot.active >= static_cast<int>(slot.entries.size())) {
+			logger::info("wheels: Ammo slot {} is empty", a_slot + 1);
+			return;
+		}
+		logger::info("wheels: Ammo slot {} used - {}", a_slot + 1, inventory::NameOf(slot.entries[static_cast<std::size_t>(slot.active)]));
+		ammo::EquipArrows(slot.entries[static_cast<std::size_t>(slot.active)]);
+	}
+
 	void PanelShown(menus::Menu a_menu)
 	{
 		if (!EnsureLoaded()) {
@@ -1392,6 +1527,9 @@ namespace wheels
 
 	void RadialShown()
 	{
+		if (Active() == Wheel::kAmmo && !(settings::Get().ammoWheel && ammo::BowHeld())) {
+			g_active.store(static_cast<int>(Wheel::kEquipment));
+		}
 		if (EnsureLoaded()) {
 			ShowMagic(Active() == Wheel::kMagic);
 		}

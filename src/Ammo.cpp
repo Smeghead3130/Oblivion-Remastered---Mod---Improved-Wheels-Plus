@@ -287,10 +287,18 @@ namespace ammo
 				logger::warn("ammo: the wheel's panel could not be made");
 				return false;
 			}
-			ui::Anchors(panelSlot, 1.0, 0.5, 1.0, 0.5);   // locked to the middle of the right-hand edge
-			ui::Vec2(panelSlot, L"SetAlignment", 1.0, 0.5);
-			ui::Vec2(panelSlot, L"SetPosition", 0.0, 0.0);
-			ui::Vec2(panelSlot, L"SetSize", R, 2.0 * R);
+			const bool centred = settings::Get().ammoCentred;   // INI [AmmoWheel] uPosition: the whole ring in the middle of the screen
+			if (centred) {
+				ui::Anchors(panelSlot, 0.5, 0.5, 0.5, 0.5);
+				ui::Vec2(panelSlot, L"SetAlignment", 0.5, 0.5);
+				ui::Vec2(panelSlot, L"SetPosition", 0.0, 0.0);
+				ui::Vec2(panelSlot, L"SetSize", 2.0 * R, 2.0 * R);
+			} else {
+				ui::Anchors(panelSlot, 1.0, 0.5, 1.0, 0.5);   // locked to the middle of the right-hand edge
+				ui::Vec2(panelSlot, L"SetAlignment", 1.0, 0.5);
+				ui::Vec2(panelSlot, L"SetPosition", 0.0, 0.0);
+				ui::Vec2(panelSlot, L"SetSize", R, 2.0 * R);
+			}
 			const std::uint8_t clip = 1;   // EWidgetClipping::ClipToBounds: the round back shows its left half - the semi-circle
 			ui::CallFirst(panel, L"SetClipping", &clip, sizeof(clip));
 
@@ -309,7 +317,7 @@ namespace ammo
 					ui::Vec2(ws, L"SetPosition", 0.0, 0.0);
 					ui::Vec2(ws, L"SetSize", 2.0 * R, 2.0 * R);
 					if (auto* mid = MakeMid(wheelImg, mic)) {
-						ui::Vec2(panelSlot, L"SetSize", R * (1.0 + kOverhang), 2.0 * R);
+						if (!centred) ui::Vec2(panelSlot, L"SetSize", R * (1.0 + kOverhang), 2.0 * R);
 						g_mid = reflect::Hold(mid);
 						g_wheelImg = reflect::Hold(wheelImg);
 						g_material = true;
@@ -319,7 +327,7 @@ namespace ammo
 				}
 			}
 			logger::info("ammo: the wheel is {}", g_material ? "the game's own (MIC_UI_QuickKeys), its left half" : "drawn (the game's wheel material could not be instanced)");
-			const double panelW = g_material ? R * (1.0 + kOverhang) : R;
+			const double panelW = centred ? R : g_material ? R * (1.0 + kOverhang) : R;   // how far the name sits left of the wheel's edge
 
 			UE::UObject* backSlot = nullptr;
 			if (auto* back = g_material ? nullptr : ui::AddToCanvas(panel, L"/Script/UMG.Image", (L"IwmAmmoBack" + n).c_str(), &backSlot)) {
@@ -381,7 +389,8 @@ namespace ammo
 			auto* label = ui::AddToCanvas(canvas, L"/Game/UI/Modern/Prefabs/WBP_AltarTextBlock.WBP_AltarTextBlock_C", (L"IwmAmmoLabel" + n).c_str(),
 				&labelSlot);
 			if (label) {
-				ui::Anchors(labelSlot, 1.0, 0.5, 1.0, 0.5);
+				if (centred) ui::Anchors(labelSlot, 0.5, 0.5, 0.5, 0.5);
+				else ui::Anchors(labelSlot, 1.0, 0.5, 1.0, 0.5);
 				ui::Vec2(labelSlot, L"SetAlignment", 1.0, 0.5);
 				ui::Vec2(labelSlot, L"SetPosition", -panelW - 12.0, 0.0);
 				const bool yes = true;
@@ -538,10 +547,33 @@ namespace ammo
 			g_drawnPointed = g_pointed;
 		}
 
+		bool g_lookLocked = false;
+
+		// While the wheel is open the mouse points at arrows: the game's look input is ignored (the camera used to turn with the mouse,
+		// the owner, 2026-10-16) and the cursor shown. Always put back - once, balanced - when the wheel closes.
+		void LockLook(bool a_on)
+		{
+			if (a_on == g_lookLocked) return;
+			auto* pc = ui::PlayerController();
+			if (!pc) return;
+			g_lookLocked = a_on;
+			ui::Call look(pc, L"SetIgnoreLookInput");
+			if (look) {
+				look.Set<bool>("bNewLookInput", a_on);
+				look.Run();
+			}
+			ui::Call cursor(pc, L"SetShowMouseCursor");
+			if (cursor) {
+				cursor.Set<bool>("bShow", a_on);
+				cursor.Run();
+			}
+		}
+
 		void Close(const char* a_why)
 		{
 			g_open = false;
 			g_pointed = -1;
+			LockLook(false);
 			ui::Visible(reflect::Get(g_root), false);
 			logger::info("ammo: the wheel closed ({})", a_why);
 		}
@@ -656,6 +688,7 @@ namespace ammo
 			EnsureMid();
 			Layout(g_count);
 			g_open = true;
+			LockLook(true);
 			++g_opens;
 			g_pointed = -1;
 			for (int i = 0; i < kSlots && g_pointed < 0; ++i) {
@@ -669,7 +702,7 @@ namespace ammo
 			g_swallow |= button;
 			a_out &= ~button;
 			g_last = std::format("opened with {} arrow kind(s)", filled);
-			logger::info("ammo: the wheel opened - {} arrow kind(s) on it{}", filled, filled ? "" : " (Y on arrows in the inventory puts them here)");
+			logger::info("ammo: the wheel opened - {} arrow kind(s) on it{}", filled, filled ? "" : " (the favourite button on arrows in the inventory puts them here)");
 			return true;
 		}
 
@@ -728,6 +761,46 @@ namespace ammo
 	}
 
 	bool Open() { return g_open; }
+
+	bool BowHeld()
+	{
+		std::uint32_t worn = 0;
+		return BowHeld(worn);
+	}
+
+	void EquipArrows(std::uint32_t a_formID)
+	{
+		Equip(a_formID);
+	}
+
+
+	void PointAt(int a_entry)
+	{
+		if (g_open && a_entry >= 0 && a_entry < g_count && g_ids[static_cast<std::size_t>(a_entry)] && g_pointed != a_entry) {
+			g_pointed = a_entry;
+			g_pointedByStick = false;
+		}
+	}
+
+	int EntryUnderMouse(double a_x, double a_y)
+	{
+		auto* img = reflect::Get(g_wheelImg);
+		double x = 0, y = 0, w = 0, h = 0;
+		if (!g_open || !g_material || !img || !ui::Measure(img, x, y, w, h)) return -1;
+		const double half = w * 0.5, cx = x + half, cy = y + h * 0.5;
+		const double ring = settings::Get().display.cellRingPercent / 100.0;
+		double       bestDist = half * settings::Get().display.cellHitPercent / 100.0;
+		int          best = -1;
+		for (int i = 0; i < g_count && i < kHalfSlots; ++i) {
+			const int slot = g_entryId[static_cast<std::size_t>(i)];
+			if (slot < 1 || !g_ids[static_cast<std::size_t>(i)]) continue;
+			const double ang = (slot - 1) * 45.0 * std::numbers::pi / 180.0;
+			const double d = std::hypot(a_x - (cx + std::sin(ang) * ring * half), a_y - (cy - std::cos(ang) * ring * half));
+			if (d < bestDist) bestDist = d, best = i;
+		}
+		return best;
+	}
+
 
 	nlohmann::json State()
 	{

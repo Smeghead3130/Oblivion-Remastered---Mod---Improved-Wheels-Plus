@@ -449,11 +449,75 @@ namespace ui
 			// content widgets with one child (SizeBox, Border...) are panels too; nothing else holds children
 			return nullptr;
 		}
+
+		void Dump(UE::UObject* a_w, int a_depth, int& a_budget)
+		{
+			static auto* userWidget = Class(L"/Script/UMG.UserWidget");
+			static auto* panelWidget = Class(L"/Script/UMG.PanelWidget");
+			static auto* treeClass = Class(L"/Script/UMG.WidgetTree");
+			static auto* panelSlot = Class(L"/Script/UMG.PanelSlot");
+			if (!a_w || a_depth > 24 || a_budget <= 0) return;
+			--a_budget;
+			logger::info("ui tree: {}{} <{}>", std::string(static_cast<std::size_t>(a_depth) * 2, ' '), pe::Utf8(a_w->GetFName().ToString()),
+				pe::Utf8(a_w->GetClass()->GetFName().ToString()));
+			if (IsA(a_w, userWidget)) {
+				auto* tree = PropObj(a_w, userWidget, "WidgetTree");
+				if (auto* root = tree ? PropObj(tree, treeClass, "RootWidget") : nullptr) Dump(root, a_depth + 1, a_budget);
+			}
+			if (IsA(a_w, panelWidget)) {
+				const auto slotsOff = reflect::Ok() ? reflect::Offset(reinterpret_cast<UE::UStruct*>(panelWidget), "Slots") : -1;
+				if (slotsOff < 0) return;
+				struct RawArray { UE::UObject** data; std::int32_t num; std::int32_t max; };
+				const auto* arr = reinterpret_cast<const RawArray*>(reinterpret_cast<const std::uint8_t*>(a_w) + slotsOff);
+				for (std::int32_t i = 0; arr->data && i < arr->num && i < 256; ++i) {
+					if (auto* content = PropObj(arr->data[i], panelSlot, "Content")) Dump(content, a_depth + 1, a_budget);
+				}
+			}
+		}
+	}
+
+	// A row or widget being built or destroyed while the walk reads it can hold a garbage slot pointer: an access violation
+	// here (seen as a crash on opening the inventory) ends the walk with "not found" instead of ending the game.
+	static UE::UObject* SearchGuarded(UE::UObject* a_w, std::string_view a_name, bool* a_faulted)
+	{
+		__try {
+			return Search(a_w, a_name, 0);
+		} __except (GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH) {
+			*a_faulted = true;
+			return nullptr;
+		}
 	}
 
 	UE::UObject* FindInTree(UE::UObject* a_userWidget, std::string_view a_name)
 	{
-		return Search(a_userWidget, a_name, 0);
+		bool faulted = false;
+		auto* found = SearchGuarded(a_userWidget, a_name, &faulted);
+		if (faulted) {
+			static bool logged = false;
+			if (!logged) {
+				logged = true;
+				logger::warn("ui: a widget tree could not be read (access violation) while looking for {} - skipped, not crashed", std::string(a_name));
+			}
+		}
+		return found;
+	}
+
+	static bool DumpGuarded(UE::UObject* a_w, int a_max)
+	{
+		__try {
+			int budget = a_max;
+			Dump(a_w, 0, budget);
+			return true;
+		} __except (GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH) {
+			return false;
+		}
+	}
+
+	void DumpTree(UE::UObject* a_userWidget, int a_maxNodes)
+	{
+		if (!DumpGuarded(a_userWidget, a_maxNodes)) {
+			logger::warn("ui tree: the widget tree could not be read to the end (access violation)");
+		}
 	}
 }
 
