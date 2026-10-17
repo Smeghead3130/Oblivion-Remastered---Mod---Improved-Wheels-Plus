@@ -3,6 +3,11 @@
 Written as changes happen, not reconstructed afterwards (rule 61). Started 2026-09-29; the history before this file is
 in `git log`. A version number is issued by the version gate only once a build is seen working in game (rule 48).
 
+## 1.1.1 - 2026-10-17 - Controller and Keyboard Support build
+
+### Fixed
+- The shipped INI and the built-in defaults now match the game's own controls and this README: the wheel button is LB (uWheelButton=256), favourites are on Select (uFavouriteButton=32) and D-pad down stays the game's own (bDpadDownPanel=0). With the 1.1.0 defaults (D-pad down as the wheel button) the radial opened and closed in a loop on a game that opens the wheel with LB.
+
 ## 1.1.0 - 2026-10-17 - Controller and Keyboard Support build (a fork of 1.0.1 by cfa911)
 
 ### Added
