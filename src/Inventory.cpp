@@ -307,4 +307,27 @@ namespace inventory
 			logger::info("wheels: equip - {} equipped on the TES thread ({})", NameOf(a_formID), Describe(StateOf(a_formID)));
 		});
 	}
+
+	void UnequipKeyed(std::uint32_t a_formID)
+	{
+		testhread::Post([a_formID] {
+			auto* player = RE::PlayerCharacter::GetSingleton();
+			auto* item = Find(a_formID);
+			if (!player || !item || !item->object || item->count <= 0) {
+				logger::info("wheels: unequip - {} is not carried any more", NameOf(a_formID));
+				return;
+			}
+			RE::ExtraDataList* keyed = nullptr;
+			if (item->extraData) {
+				for (RE::ExtraDataList* xl : *item->extraData) {
+					if (xl && KeyExtra(xl)) {
+						keyed = xl;
+						break;
+					}
+				}
+			}
+			player->UnequipObject(item->object, 1, keyed, false, false);
+			logger::info("wheels: unequip - {} taken off on the TES thread ({})", NameOf(a_formID), Describe(StateOf(a_formID)));
+		});
+	}
 }

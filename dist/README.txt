@@ -1,6 +1,6 @@
-Improved Wheel Menu - Controller and Keyboard Support
-=====================================================
-Version 1.1.1
+Improved Wheel - Keyboard and Better Controller Support
+=======================================================
+Version 1.1.2
 
 A modified build of Improved Wheel Menu (Oblivion Remastered) by ApocryphaRealm (GPL-3.0). It replaces the original
 ImprovedWheelMenu.dll and keeps its file and setting names, so install it instead of the original, not beside it.
@@ -26,7 +26,16 @@ ADDED IN THIS BUILD
     (uAnimSpeedPercent), and where the ammo wheel opens (uPosition).
   * Wheels are kept per character, and anything a loaded save cannot have (a spell or item that character does not own) is taken off
     the wheel so nothing tries to use a form that is not there.
-  * Works with the Oblivion Menu Search and Oblivion Search Keyboard mods: while the on-screen keyboard is open the wheel's menu rules
+  * The stick points only at slots that hold something (bPointFilledOnly, on): empty slots are skipped on the Equipment, Magic and Ammo wheels, as the Ammo
+    shortcut always did.
+  * bChooseOnClose (off): closing the wheel by letting go of its button, or pressing it again, uses the slot the stick points at, on whichever wheel is up -
+    point and close, no A or RB needed. B still closes without using anything.
+  * bRememberWheel (on): the radial opens on the wheel you left it on; 0 = always on the Equipment wheel.
+  * A left mouse click on the radial or the assign panel is the A button on the slot the mouse points at. A potion, poison or ingredient is used at
+    once, however you choose it. Choosing the slot of a weapon, armour or clothing that is already worn takes it off.
+  * The Ammo wheel is laid out the same on the shortcut and on the radial (LB, then D-pad right), and shows the pointed arrows' name inside the wheel.
+  * The wheels' own texts use the game's UI font: the name above the wheel is gold with a black outline and a shadow, the texts inside are a soft grey.
+  * Works with the Menu Search and Menu Search - Controller Keyboard mods (also the 1.x Oblivion Menu Search / Oblivion Search Keyboard): while the on-screen keyboard is open the wheel's menu rules
     stand aside.
 
 WHAT YOU GET
@@ -34,8 +43,8 @@ WHAT YOU GET
   * The inventory wheel: hold the game's quick-key button to open the radial and point with the right stick. Each of
     the eight slots holds up to five items (uEntriesPerSlot); the counter under the wheel shows which place the shown
     item has and how many the slot holds. LT and RT choose the item within the pointed slot, RB or A use it, and
-    D-pad left and right switch between the inventory and Magic wheels. Pointing alone never uses anything, letting
-    go of the wheel button uses nothing, and B closes the wheel.
+    D-pad left and right switch between the inventory and Magic wheels.Pointing alone never uses anything (unless
+    bChooseOnClose is on), letting go of the wheel button uses nothing, and B closes the wheel.
   * The centre rest snap (bCentreRestSnap, on by default): with it on, the stick back at rest in the middle points
     no slot, so letting go of the stick never picks one by mistake. With it off a slot stays pointed until you pick
     (A or RB) or close the wheel.

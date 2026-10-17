@@ -1,4 +1,5 @@
 #include "Ammo.h"
+#include "UiText.h"
 
 #include "Inventory.h"
 #include "PEHook.h"
@@ -257,12 +258,12 @@ namespace ammo
 				float        rgba[4];
 				std::uint8_t rule;   // ESlateColorStylingMode: 0 = the colour given
 				std::uint8_t pad[7];
-			} white{ { 1.0f, 1.0f, 1.0f, 1.0f }, 0, {} };
+			} white{ { 0.50f, 0.49f, 0.46f, 1.0f }, 0, {} };   // a soft grey (linear), not white: the texts inside the wheels were too bright
 			ui::CallFirst(a_label, L"SetColor", &white, sizeof(white));   // the prefab's own (Tween Menu, BTPS)
 			ui::CallFirst(a_label, L"SetColorAndOpacity", &white, sizeof(white));
-			const float shadow[4] = { 0.0f, 0.0f, 0.0f, 0.85f };
+			const float shadow[4] = { 0.0f, 0.0f, 0.0f, 0.0f };   // none, as the other wheels' inside texts
 			ui::CallFirst(a_label, L"SetShadowColorAndOpacity", shadow, sizeof(shadow));
-			ui::Vec2(a_label, L"SetShadowOffset", 1.5, 1.5);
+			ui::Vec2(a_label, L"SetShadowOffset", 0.0, 0.0);
 		}
 
 		bool Build()
@@ -386,13 +387,18 @@ namespace ammo
 			g_layoutCount = -1;
 			// the pointed arrows' name, left of the wheel (outside the clipped panel)
 			UE::UObject* labelSlot = nullptr;
-			auto* label = ui::AddToCanvas(canvas, L"/Game/UI/Modern/Prefabs/WBP_AltarTextBlock.WBP_AltarTextBlock_C", (L"IwmAmmoLabel" + n).c_str(),
+			auto* label = ui::AddToCanvas(canvas, L"/Script/UMG.TextBlock", (L"IwmAmmoLabel" + n).c_str(),
 				&labelSlot);
 			if (label) {
-				if (centred) ui::Anchors(labelSlot, 0.5, 0.5, 0.5, 0.5);
-				else ui::Anchors(labelSlot, 1.0, 0.5, 1.0, 0.5);
-				ui::Vec2(labelSlot, L"SetAlignment", 1.0, 0.5);
-				ui::Vec2(labelSlot, L"SetPosition", -panelW - 12.0, 0.0);
+				// the pointed arrows' name inside the wheel, as the other wheels show theirs: on the ring's middle, or (the half wheel) inside the half ring
+				if (centred) {
+					ui::Anchors(labelSlot, 0.5, 0.5, 0.5, 0.5);
+					ui::Vec2(labelSlot, L"SetPosition", 0.0, 0.0);
+				} else {
+					ui::Anchors(labelSlot, 1.0, 0.5, 1.0, 0.5);
+					ui::Vec2(labelSlot, L"SetPosition", -0.3 * R, 0.0);
+				}
+				ui::Vec2(labelSlot, L"SetAlignment", 0.5, 0.5);
 				const bool yes = true;
 				ui::CallFirst(labelSlot, L"SetAutoSize", &yes, sizeof(yes));
 			} else {
@@ -403,6 +409,7 @@ namespace ammo
 			vp.Run();
 			if (label) {
 				White(label);   // after the Slate widget exists
+				uix::ApplyFont(label, 25.0 * settings::Get().display.centreTextPercent / 100.0);   // the size the other wheels' centre names have
 			}
 			g_root = reflect::Hold(root);
 			g_label = label ? reflect::Hold(label) : reflect::Handle{};
@@ -454,6 +461,7 @@ namespace ammo
 			text->~FText();
 			g_shownText = a_text;
 			White(label);
+			uix::ApplyFont(label, 0);
 		}
 
 		void DrawMaterial()
@@ -761,6 +769,11 @@ namespace ammo
 	}
 
 	bool Open() { return g_open; }
+
+	std::array<int, 5> LayoutSlots(int a_count)
+	{
+		return HalfSlots(a_count);
+	}
 
 	bool BowHeld()
 	{

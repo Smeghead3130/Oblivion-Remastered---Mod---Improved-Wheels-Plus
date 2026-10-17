@@ -1,4 +1,5 @@
 #include "WheelName.h"
+#include "UiText.h"
 
 #include "Inventory.h"
 #include "Menus.h"
@@ -24,19 +25,22 @@ namespace wheelname
 		constexpr const wchar_t* kFullNames = L"/Game/Localization/StringTables/ST_FullNames.ST_FullNames";
 		double      g_x = -1e9, g_y = -1e9;
 
+		constexpr float kTitleInk[4] = { 0.80f, 0.62f, 0.28f, 1.0f };   // the gold of the wheel's ring
+		constexpr float kTitleOutline[4] = { 0.0f, 0.0f, 0.0f, 1.0f };   // black round it, so it reads on any scene
+
 		void White(UE::UObject* a_label)
-		{
+{
 			struct SlateColor
 			{
 				float        rgba[4];
 				std::uint8_t rule;
 				std::uint8_t pad[7];
-			} white{ { 1.0f, 1.0f, 1.0f, 1.0f }, 0, {} };
+			} white{ { kTitleInk[0], kTitleInk[1], kTitleInk[2], kTitleInk[3] }, 0, {} };   // the wheel's gold, not white
 			ui::CallFirst(a_label, L"SetColor", &white, sizeof(white));
 			ui::CallFirst(a_label, L"SetColorAndOpacity", &white, sizeof(white));
-			const float shadow[4] = { 0.0f, 0.0f, 0.0f, 0.9f };
+			const float shadow[4] = { 0.0f, 0.0f, 0.0f, 0.55f };
 			ui::CallFirst(a_label, L"SetShadowColorAndOpacity", shadow, sizeof(shadow));
-			ui::Vec2(a_label, L"SetShadowOffset", 1.5, 1.5);
+			ui::Vec2(a_label, L"SetShadowOffset", 1.0, 1.0);
 		}
 
 		bool Build()
@@ -49,7 +53,7 @@ namespace wheelname
 			auto* canvas = root ? ui::RootCanvas(root, (L"IwmNameCanvas" + n).c_str()) : nullptr;
 			if (!canvas) return false;
 			UE::UObject* slot = nullptr;
-			auto* label = ui::AddToCanvas(canvas, L"/Game/UI/Modern/Prefabs/WBP_AltarTextBlock.WBP_AltarTextBlock_C", (L"IwmNameLabel" + n).c_str(), &slot);
+			auto* label = ui::AddToCanvas(canvas, L"/Script/UMG.TextBlock", (L"IwmNameLabel" + n).c_str(), &slot);
 			if (!label || !slot) {
 				logger::info("wheel name: the game's text prefab is not loaded yet");
 				return false;
@@ -62,7 +66,8 @@ namespace wheelname
 			vp.Set<std::int32_t>("ZOrder", 60);   // above the menus' own layers
 			vp.Run();
 			White(label);
-			ui::Visible(root, false);
+			uix::ApplyBoldFont(label, 30.0, kTitleOutline, 1);
+ui::Visible(root, false);
 			g_root = reflect::Hold(root);
 			g_label = reflect::Hold(label);
 			g_slot = reflect::Hold(slot);
@@ -84,6 +89,7 @@ namespace wheelname
 			a_label->ProcessEvent(fn, buf.data());
 			text->~FText();
 			White(a_label);
+			uix::ApplyBoldFont(a_label, 0, kTitleOutline, 1);
 		}
 
 		// the game's centre text set to a name: a string-table key (LOC_FN_...) through the game's own table, as the UI shows
@@ -157,14 +163,14 @@ namespace wheelname
 			}
 			// the Magic wheel's picture covers the game's centre text and the game rewrites it ("Shortcut") as it likes: hidden there,
 			// the name is drawn above the picture instead
-			const bool overlay = a_mode != 0;
+			const bool overlay = true;   // every wheel's centre name is drawn by us (SlotCounts.cpp): one font, colour and size on all three
 			if (g_detailsHidden != (overlay ? 1 : 0)) {
 				ui::Visible(label, !overlay);
 				g_detailsHidden = overlay ? 1 : 0;
 			}
 			const int pointed = quickkeys::PointedSlot();   // 1..8, 0 / -1 none
 			// nothing pointed, or an empty slot: blank (the game's own text there is "Shortcut")
-			const auto id = pointed >= 1 && pointed <= 8 ? (a_mode == 1 ? wheels::MagicSlots()[static_cast<std::size_t>(pointed - 1)] : a_mode == 2 ? wheels::AmmoSlots()[static_cast<std::size_t>(pointed - 1)] : inventory::Keys()[static_cast<std::size_t>(pointed - 1)]) : 0u;
+			const auto id = pointed >= 1 && pointed <= 8 ? (a_mode == 1 ? wheels::MagicSlots()[static_cast<std::size_t>(pointed - 1)] :a_mode == 2 ? wheels::AmmoRingSlots()[static_cast<std::size_t>(pointed - 1)] : inventory::Keys()[static_cast<std::size_t>(pointed - 1)]) : 0u;
 			std::string text = " ";
 			if (id) {
 				std::string name = a_mode == 1 ? rows::SpellName(id) : inventory::NameOf(id);

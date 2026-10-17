@@ -58,11 +58,14 @@ namespace wheels
 
 	// the Ammo wheel's eight slots, the top one first: the arrows the player carries (0 = empty, or not carried)
 	std::array<std::uint32_t, 8> AmmoSlots();
+	int                          AmmoSlotAtRing(int a_ring);        // the radial's Ammo view: the Ammo slot whose arrows sit at that ring position (0-7), -1 when none
+	std::array<std::uint32_t, 8> AmmoRingSlots();                   // ... the arrows by ring position, laid out as the shortcut's half wheel lays them out
 	void AssignPressed(menus::Menu a_menu, int a_slot);   // A with a menu's panel showing (a_slot = pointed key, -1 none)
 	void Tick(bool a_assignHeld);              // every controller read: settles a pending Equipment assign
 	void CycleEntry(Wheel a_wheel, int a_slot, int a_dir);   // step the active entry of a slot (D-pad L/R in a panel, LT/RT on the radial)
 	void ClearSlot(Wheel a_wheel, int a_slot);   // X held on a pointed slot of a panel: every entry of the slot comes off the wheel
 	void SwitchWheel(int a_dir);
+	void KeepActive();                 // the radial that opens in the next moment keeps the wheel that is active (the keyboard's own presses)
 	void SetActive(Wheel a_wheel);             // a wheel's own button or key: the radial opens (or shows) on that wheel               // D-pad L/R on the HUD radial
 	// RB (or A) on the HUD radial's Equipment wheel (key 0-7): equipment goes on at once through Actor::EquipObject on
 	// the TES thread (an item already worn: nothing, logged); anything else gets the game's own quick-key press once the

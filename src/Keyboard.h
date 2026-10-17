@@ -20,4 +20,6 @@ namespace keyboard
 	bool PresentWhenNoPad();
 	// the mouse position in the UI's viewport units (the unit the widgets are measured in); false when it cannot be read
 	bool MouseUnits(double& a_x, double& a_y);
+	// a slot key's script (wheel button, the stick at slot N, A) is running: its stick is meant exactly, never moved to another slot
+	bool ScriptRunning();
 }

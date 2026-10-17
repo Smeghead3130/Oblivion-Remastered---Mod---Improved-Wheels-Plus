@@ -119,6 +119,9 @@ namespace pad
 		int  g_centreStick = 0;    // reads left with the right stick held centred (a cancelled radial must not point anywhere)
 		int g_pulseLS = 0;     // reads left of a synthetic left stick click (toggles the menu's assign panel)
 
+		bool g_forceClose = false;   // a use on the Equipment wheel is waiting for the radial to close; if it has not closed shortly, B closes it
+		ULONGLONG g_forceCloseAt = 0;
+		int g_bPulse = 0;
 		bool g_closingMagic = false;   // the radial is closing on a Magic slot: the stick held centred, no slot pointed, until it has closed
 		bool g_magicPanel = false;   // the magic menu's panel is up (it reports no visibility change; tracked from our own toggles)
 		bool g_swallowA = false;     // A was ours (the magic menu's panel): the game never sees it, until let go
@@ -274,11 +277,71 @@ namespace pad
 		{
 			quickkeys::CancelChoice();
 			g_closingMagic = true;   // held clear and centred until the radial has closed
+			g_forceClose = true;     // a wheel opened with a tap and clicked with the mouse did not close by itself: a potion was never used
+			g_forceCloseAt = GetTickCount64() + 400;
 			if (magicwheel::IsSpellKey(a_slot)) {
 				logger::info("pad: the inventory wheel closed on slot {}, whose game key holds a spell - nothing used", a_slot + 1);
 				return;
 			}
 			wheels::UseNow(a_slot, a_how);
+		}
+
+		// The radial points only at slots that hold something (the Ammo shortcut works this way already): the right stick's direction is moved to
+		// the nearest filled slot of the wheel that is up, its push kept. Nothing filled, or INI [Wheel] bPointFilledOnly=0: the stick is as it is.
+		void SnapToFilled(XINPUT_GAMEPAD& a_pad)
+		{
+			if (!settings::Get().pointFilledOnly || keyboard::ScriptRunning()) return;
+			const double mx = a_pad.sThumbRX / 32767.0, my = a_pad.sThumbRY / 32767.0;
+			const double m = std::hypot(mx, my);
+			if (m < kStickOn) return;
+			std::array<bool, 8> filled{};
+			if (wheels::Active() == wheels::Wheel::kMagic) {
+				const auto spells = wheels::MagicSlots();
+				for (int s = 0; s < 8; ++s) filled[static_cast<std::size_t>(s)] = spells[static_cast<std::size_t>(s)] != 0;
+			} else if (wheels::Active() == wheels::Wheel::kAmmo) {
+				const auto arrows = wheels::AmmoRingSlots();
+				for (int s = 0; s < 8; ++s) filled[static_cast<std::size_t>(s)] = arrows[static_cast<std::size_t>(s)] != 0;
+			} else {
+				const auto keys = inventory::Keys();
+				for (int s = 0; s < 8; ++s) filled[static_cast<std::size_t>(s)] = keys[static_cast<std::size_t>(s)] != 0 && !magicwheel::IsSpellKey(s);
+			}
+			if (std::none_of(filled.begin(), filled.end(), [](bool b) { return b; })) return;
+			double ang = std::atan2(mx, my) * 180.0 / std::numbers::pi;   // clockwise from the top: slot n sits 45 * (n - 1) degrees round
+			if (ang < 0) ang += 360.0;
+			int best = -1;
+			double bestD = 1e9;
+			for (int s = 0; s < 8; ++s) {
+				if (!filled[static_cast<std::size_t>(s)]) continue;
+				const double d = std::abs(std::remainder(ang - 45.0 * s, 360.0));
+				if (d < bestD) {
+					bestD = d;
+					best = s;
+				}
+			}
+			const double a = 45.0 * best * std::numbers::pi / 180.0;
+			const double push = std::min(m, 1.0);
+			a_pad.sThumbRX = static_cast<SHORT>(std::lround(std::sin(a) * push * 32767.0));
+			a_pad.sThumbRY = static_cast<SHORT>(std::lround(std::cos(a) * push * 32767.0));
+		}
+
+		// The wheel closing by its button (let go after a hold, or pressed again after a tap): uses NOTHING by default; with INI [Wheel]
+		// bChooseOnClose=1 it uses the slot the stick points at, on whichever wheel is up - the stick alone chooses, as on the game's own wheel.
+		// B still backs out.
+		void CloseOnPointed(const char* a_how)
+		{
+			const int slot = settings::Get().chooseOnClose ? PointedKey() : -1;
+			if (slot < 0) {
+				CloseOnNothing(a_how);
+				return;
+			}
+			logger::info("pad: the wheel closed by {} with slot {} pointed - chosen (bChooseOnClose)", a_how, slot + 1);
+			if (wheels::Active() == wheels::Wheel::kMagic) {
+				CloseOnMagic(slot);
+			} else if (wheels::Active() == wheels::Wheel::kAmmo) {
+				CloseOnAmmo(slot);
+			} else {
+				CloseOnEquipment(slot, "close");
+			}
 		}
 
 		// The Apocrypha Menu Framework's window is open (AMF_IsMenuOpen, AMF OR 1.0.5+). This read comes before the
@@ -337,7 +400,7 @@ namespace pad
 			return s_fn();
 		}
 
-		// The search keyboard plugin (OblivionSearchKeyboard.dll) has the controller while its keyboard is up: the menu rules stand aside
+		// The Menu Search - Controller Keyboard plugin (MenuSearchControllerKeyboard.dll, once OblivionSearchKeyboard.dll) has the controller while its keyboard is up: the menu rules stand aside
 		// (X on a favourite would be swallowed as 'not a drop' before the keyboard could use it as Delete).
 		bool SearchKeyboardOpen()
 		{
@@ -348,8 +411,10 @@ namespace pad
 				const ULONGLONG now = GetTickCount64();
 				if (now < s_next) return false;
 				s_next = now + 2000;
-				if (HMODULE m = GetModuleHandleW(L"OblivionSearchKeyboard.dll")) {
-					s_fn = reinterpret_cast<Fn>(GetProcAddress(m, "OblivionSearchKeyboard_IsOpen"));
+				if (HMODULE m = GetModuleHandleW(L"MenuSearchControllerKeyboard.dll")) {
+					s_fn = reinterpret_cast<Fn>(GetProcAddress(m, "MenuSearchControllerKeyboard_IsOpen"));
+				} else if (HMODULE old = GetModuleHandleW(L"OblivionSearchKeyboard.dll")) {   // the keyboard under its 1.x name
+					s_fn = reinterpret_cast<Fn>(GetProcAddress(old, "OblivionSearchKeyboard_IsOpen"));
 				}
 				if (!s_fn) return false;
 			}
@@ -597,7 +662,7 @@ namespace pad
 						g_latched = false;
 						g_suppressDown = true;   // the game sees the button go up: the wheel closes - on nothing
 						if (radialOpen) {
-							CloseOnNothing("the wheel button pressed again");
+							CloseOnPointed("the wheel button pressed again");
 						}
 					} else {
 						if (g_pendingLatch) {
@@ -607,7 +672,7 @@ namespace pad
 						g_gameDownAt = now;
 						// The wheel is a TES menu too, but it is not open yet at its own press, so a menu up now is a real
 						// one (the system menu, a container): D-pad down there is list navigation and is never held.
-						g_downInMenu = !radialOpen && menus::AnyOpen();
+						g_downInMenu = !radialOpen && menus::AnyOpen() && menus::MsSinceClosed() > 600;   // a menu still closing (the game reports menu mode a moment longer) is gameplay
 						logger::debug("pad: wheel button down (wheel open: {}, in a menu: {})", radialOpen, g_downInMenu);
 					}
 				}
@@ -623,7 +688,7 @@ namespace pad
 						g_pendingSince = now;
 						logger::info("pad: wheel button tapped ({} ms) before the wheel showed - held for the game until it opens", sinceDown());
 					} else if (radialOpen) {
-						CloseOnNothing("the wheel button let go");   // a hold let go: nothing used, on either wheel
+						CloseOnPointed("the wheel button let go");   // a hold let go: nothing used, on either wheel
 					} else {
 						logger::info("pad: wheel button up after {} ms and no wheel showed", sinceDown());
 					}
@@ -645,13 +710,15 @@ namespace pad
 					out &= ~wheelBtn;
 					logger::info("pad: B on the wheel - closed without using a slot");
 				} else if (quickkeys::RadialOpen()) {
+					SnapToFilled(a_pad);
 					RestSnap(a_pad, now);
 					const int slot = PointedKey();
 					out &= ~((XINPUT_GAMEPAD_DPAD_LEFT | XINPUT_GAMEPAD_DPAD_RIGHT | XINPUT_GAMEPAD_LEFT_SHOULDER | XINPUT_GAMEPAD_RIGHT_SHOULDER) & ~wheelBtn);   // never the wheel button itself
 					if (pressed & XINPUT_GAMEPAD_DPAD_LEFT) { wheels::SwitchWheel(-1); }
 					if (pressed & XINPUT_GAMEPAD_DPAD_RIGHT) { wheels::SwitchWheel(+1); }
-					if (ltPressed) { wheels::CycleEntry(wheels::Active(), slot, -1); }
-					if (rtPressed) { wheels::CycleEntry(wheels::Active(), slot, +1); }
+					const int stepSlot = wheels::Active() == wheels::Wheel::kAmmo ? wheels::AmmoSlotAtRing(slot) : slot;   // the Ammo view draws its arrows at ring positions
+										if (ltPressed && stepSlot >= 0) { wheels::CycleEntry(wheels::Active(), stepSlot, -1); }
+										if (rtPressed && stepSlot >= 0) { wheels::CycleEntry(wheels::Active(), stepSlot, +1); }
 					// LB is held from the game and does nothing on the wheel (the owner, 2026-10-01: "I pressed left bumper and it
 					// removed the selected magic from the wheel. But left bumper shouldn't do anything like that") - Y in the
 					// menus is how an entry comes off a wheel
@@ -669,7 +736,7 @@ namespace pad
 						} else if (wheels::Active() == wheels::Wheel::kAmmo) {
 							CloseOnAmmo(slot);
 						} else {
-							CloseOnEquipment(slot, "A");
+							CloseOnEquipment(slot, keyboard::ScriptRunning() ? "click" : "A");   // the mouse click is a script of the keyboard's
 						}
 						g_swallowA = true;
 						g_latched = false;
@@ -713,6 +780,19 @@ namespace pad
 				} else {
 					g_swallowX = false;
 				}
+			}
+			if (g_forceClose) {
+				if (!quickkeys::RadialOpen()) {
+					g_forceClose = false;
+					g_bPulse = 0;
+				} else if (GetTickCount64() >= g_forceCloseAt && g_bPulse == 0) {
+					g_bPulse = kPulseReads;
+					logger::info("pad: the radial is still open 400 ms after a use on the Equipment wheel - closed with B, so the item is used");
+				}
+			}
+			if (g_bPulse > 0) {
+				out |= XINPUT_GAMEPAD_B;
+				--g_bPulse;
 			}
 			if (g_closingMagic) {
 				if (!quickkeys::RadialOpen()) {

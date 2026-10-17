@@ -26,7 +26,8 @@ namespace
 	// report-in-every-build). Rewritten on every event, so a test can read it without the log.
 	void WriteSelfCheck()
 	{
-		const auto s = quickkeys::GetStatus();
+		if (settings::Get().logLevel > 2) return;   // a diagnostic file: only with uLogLevel 2 or lower
+const auto s = quickkeys::GetStatus();
 		const auto p = pad::GetStatus();
 		const auto path = settings::PluginFolder() / L"ImprovedWheelMenu.selfcheck.txt";
 		std::string text = std::format(

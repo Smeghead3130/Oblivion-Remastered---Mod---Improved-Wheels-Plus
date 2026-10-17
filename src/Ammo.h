@@ -28,6 +28,7 @@ namespace ammo
 	// took this read - the rest of the gameplay rules then leave it alone.
 	bool Rewrite(XINPUT_GAMEPAD& a_pad, WORD a_raw, WORD a_pressed, WORD& a_out, bool a_gameplay, bool a_radialOpen);
 	bool Open();
+	std::array<int, 5> LayoutSlots(int a_count);   // the half wheel's ring positions (1-8) for that many arrows entries: the shortcut's layout, the radial's Ammo view uses it too
 	bool BowHeld();                                      // a bow is worn
 	void EquipArrows(std::uint32_t a_formID);            // put those arrows on (the TES thread)
 	void PointAt(int a_entry);                          // the mouse is over that entry: it is the pointed one

@@ -1,4 +1,5 @@
 #include "SlotCounts.h"
+#include "UiText.h"
 
 #include "QuickKeys.h"
 #include "Reflect.h"
@@ -45,12 +46,12 @@ namespace slotcounts
 				float        rgba[4];
 				std::uint8_t rule;
 				std::uint8_t pad[7];
-			} white{ { 1.0f, 1.0f, 1.0f, 1.0f }, 0, {} };
+			} white{ { 0.50f, 0.49f, 0.46f, 1.0f }, 0, {} };   // a soft grey (linear), not white: the texts inside the wheels were too bright
 			ui::CallFirst(a_label, L"SetColor", &white, sizeof(white));
 			ui::CallFirst(a_label, L"SetColorAndOpacity", &white, sizeof(white));
-			const float shadow[4] = { 0.0f, 0.0f, 0.0f, 0.95f };
+			const float shadow[4] = { 0.0f, 0.0f, 0.0f, 0.0f };   // none: the texts inside the wheels carry no shadow
 			ui::CallFirst(a_label, L"SetShadowColorAndOpacity", shadow, sizeof(shadow));
-			ui::Vec2(a_label, L"SetShadowOffset", 1.5, 1.5);
+			ui::Vec2(a_label, L"SetShadowOffset", 0.0, 0.0);
 		}
 
 		void SetText(UE::UObject* a_label, const std::string& a_text)
@@ -64,6 +65,7 @@ namespace slotcounts
 			a_label->ProcessEvent(fn, buf.data());
 			text->~FText();
 			White(a_label);
+			uix::ApplyFont(a_label, 0);   // the game's UI font, as everywhere on the wheels (the size it was given)
 		}
 
 		bool Build()
@@ -77,7 +79,7 @@ namespace slotcounts
 			if (!canvas) return false;
 			for (int k = 0; k < 8; ++k) {
 				UE::UObject* slot = nullptr;
-				auto* label = ui::AddToCanvas(canvas, L"/Game/UI/Modern/Prefabs/WBP_AltarTextBlock.WBP_AltarTextBlock_C",
+				auto* label = ui::AddToCanvas(canvas, L"/Script/UMG.TextBlock",
 					(L"IwmCount" + n + L"_" + std::to_wstring(k)).c_str(), &slot);
 				if (!label || !slot) {
 					logger::info("slot counts: the game's text prefab is not loaded yet");
@@ -95,7 +97,7 @@ namespace slotcounts
 			}
 			for (int i = 0; i < kCentreLines; ++i) {   // the centre name: a label a line, each centred on the middle of the wheel
 				UE::UObject* slot = nullptr;
-				auto* label = ui::AddToCanvas(canvas, L"/Game/UI/Modern/Prefabs/WBP_AltarTextBlock.WBP_AltarTextBlock_C",
+				auto* label = ui::AddToCanvas(canvas, L"/Script/UMG.TextBlock",
 					(L"IwmCentre" + n + L"_" + std::to_wstring(i)).c_str(), &slot);
 				if (!label || !slot) break;
 				ui::Anchors(slot, 0, 0, 0, 0);
@@ -111,8 +113,16 @@ namespace slotcounts
 			ui::Call vp(root, L"AddToViewport");
 			vp.Set<std::int32_t>("ZOrder", 61);   // over the wheel and its name
 			vp.Run();
-			for (auto& h : g_label) White(reflect::Get(h));
-			for (auto& h : g_centre) if (auto* c = reflect::Get(h)) White(c);
+			for (auto& h : g_label) {   // every text on the wheels: the game's UI font, white with a shadow; the sizes are the base the INI percentages scale
+				White(reflect::Get(h));
+				uix::ApplyFont(reflect::Get(h), 25.0);
+			}
+			for (auto& h : g_centre) {
+				if (auto* c = reflect::Get(h)) {
+					White(c);
+					uix::ApplyFont(c, 25.0);
+				}
+			}
 			ui::Visible(root, false);
 			g_root = reflect::Hold(root);
 			g_shown = false;
@@ -180,7 +190,7 @@ namespace slotcounts
 		for (int i = 0; i < kCentreLines; ++i) {
 			auto* centre = reflect::Get(g_centre[static_cast<std::size_t>(i)]);
 			if (!centre) continue;
-			const std::string want = a_wheel == wheels::Wheel::kMagic && i < static_cast<int>(g_centreWanted.size()) ? g_centreWanted[static_cast<std::size_t>(i)] : std::string(" ");
+			const std::string want =i < static_cast<int>(g_centreWanted.size()) ? g_centreWanted[static_cast<std::size_t>(i)] : std::string(" ");
 			if (want != g_centreShown[static_cast<std::size_t>(i)]) {
 				SetText(centre, want.empty() ? std::string(" ") : want);
 				g_centreShown[static_cast<std::size_t>(i)] = want;

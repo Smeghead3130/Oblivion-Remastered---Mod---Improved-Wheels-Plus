@@ -7,8 +7,11 @@ namespace settings
 {
 	struct Values
 	{
-		int  logLevel = 2;        // [Log] uLogLevel: 0 trace, 1 debug, 2 info, 3 warn, 4 error
+		int  logLevel = 3;        // [Log] uLogLevel: 0 trace, 1 debug, 2 info, 3 warn (the default: warnings and errors only), 4 error
 		int  entriesPerSlot = 5;  // [Wheel] uEntriesPerSlot: how many entries one slot of a wheel holds (the owner: five by default)
+		bool pointFilledOnly = true;   // [Wheel] bPointFilledOnly: the stick points only at slots that hold something (as the Ammo shortcut does)
+		bool rememberWheel = true;   // [Wheel] bRememberWheel: the radial opens on the wheel it was left on (0: always on the Equipment wheel)
+		bool chooseOnClose = false;   // [Wheel] bChooseOnClose: closing the wheel (its button let go or pressed again) uses the pointed slot, as RB / A would
 		bool centreRestSnap = true;   // [Wheel] bCentreRestSnap: the right stick back at rest points at no slot
 		int  restSnapMs = 150;        // [Wheel] uRestSnapMs: how long at rest before the pointer lets go
 		bool ammoWheel = true;        // [AmmoWheel] bEnabled

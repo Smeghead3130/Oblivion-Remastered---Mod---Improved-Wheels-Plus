@@ -239,7 +239,7 @@ namespace magicwheel
 				g_tex.fill(nullptr);
 				g_op.fill(-1.0f);
 			}
-			const std::array<std::uint32_t, 8> spells = a_mode == 1 ? inventory::Keys() : a_mode == 2 ? wheels::AmmoSlots() : wheels::MagicSlots();
+			const std::array<std::uint32_t, 8> spells = a_mode == 1 ? inventory::Keys() :a_mode == 2 ? wheels::AmmoRingSlots() : wheels::MagicSlots();
 			for (int k = 0; k < 8; ++k) {
 				const auto here = spells[static_cast<std::size_t>(k)];
 				auto* tex = here ? (a_mode != 0 ? rows::ItemIcon(here) : rows::SpellIcon(here)) : nullptr;

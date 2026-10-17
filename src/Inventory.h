@@ -42,4 +42,7 @@ namespace inventory
 
 	// puts the item on (its quick-keyed instance), on the TES thread: RB / A on the inventory wheel, at once
 	void EquipKeyed(std::uint32_t a_formID);
+
+	// takes the item off (the worn instance, the quick-keyed one first), on the TES thread: RB / A / closing on the slot of an item already worn
+	void UnequipKeyed(std::uint32_t a_formID);
 }

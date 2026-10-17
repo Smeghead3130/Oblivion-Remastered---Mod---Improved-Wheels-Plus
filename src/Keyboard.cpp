@@ -196,27 +196,23 @@ namespace keyboard
 			const auto stick = [&] { a_pad.sThumbRX = rx; a_pad.sThumbRY = ry; };
 			const bool pointed = quickkeys::PointedSlot() == g_script.slot + 1;
 			const auto menu = menus::Active();
-			if (g_script.kind == Script::kClick) {   // a click on a cell: the stick at that cell until it is pointed, then A
+			if (g_script.kind == Script::kClick) {   // a click is the A button on the slot the mouse already points (the game points by the mouse's angle, as by the stick's)
 				const bool open = menu == menus::Menu::kInventory || menu == menus::Menu::kMagic ? PanelUp(menu) : quickkeys::RadialOpen();
 				if (!open) {
 					End("the wheel closed");
 					return false;
 				}
-				if (g_script.phase == 0) {
-					stick();
-					if ((pointed && elapsed >= 15) || elapsed > 300) Next(1);
-				} else {
-					stick();
-					a_pad.wButtons |= XINPUT_GAMEPAD_A;
-					if (elapsed >= 50) End("clicked");
-				}
-			} else if (g_script.kind == Script::kUse) {
+				a_pad.wButtons |= XINPUT_GAMEPAD_A;
+				++g_script.phase;   // reads that carried the A: at least three, so the rules see a press even when the game reads the pad slowly
+				if ((elapsed >= 50 && g_script.phase >= 3) || elapsed > 400) End("clicked");
+} else if (g_script.kind == Script::kUse) {
 				if (g_script.phase >= 1 && !quickkeys::RadialOpen()) {
 					End("the radial closed");
 					return false;
 				}
 				switch (g_script.phase) {
 				case 0:   // the wheel button, until the radial shows
+					wheels::KeepActive();
 					a_pad.wButtons |= wheel;
 					if (quickkeys::RadialOpen() && elapsed >= 10) Next(1);
 					else if (elapsed > 900) End("the radial did not open");
@@ -318,6 +314,7 @@ namespace keyboard
 			}
 			s_prev = now;
 		}
+		if (Down(k.lb)) wheels::KeepActive();   // the keyboard's own wheel button: the wheel it left is the wheel it opens
 		press(k.lb, XINPUT_GAMEPAD_LEFT_SHOULDER);
 		press(k.rb, XINPUT_GAMEPAD_RIGHT_SHOULDER);
 		press(k.a, XINPUT_GAMEPAD_A);
@@ -378,11 +375,10 @@ namespace keyboard
 			const bool inMenu = menu == menus::Menu::kInventory || menu == menus::Menu::kMagic;
 			const bool where = inMenu ? PanelUp(menu) : quickkeys::RadialOpen();   // the assign panel, or the HUD radial
 			if (now && !s_lmb && g_script.kind == Script::kNone && where) {
-				std::string why;
-				const int   cell = CellUnderMouse(&why);
-				if (cell >= 0) {
-					g_script = { Script::kClick, cell, 0, false, GetTickCount64() };
-					logger::info("keyboard: click on cell {} of the {} - {}", cell + 1, inMenu ? "assign panel" : "radial", inMenu ? "assign" : "use");
+				const int pointed = quickkeys::PointedSlot();   // 1..8, the slot the mouse (or the stick) points at now
+				if (pointed >= 1) {
+					g_script = { Script::kClick, pointed - 1, 0, false, GetTickCount64() };
+					logger::info("keyboard: click - A on slot {} of the {}", pointed, inMenu ? "assign panel" : "radial");
 				}
 			}
 			s_lmb = now;
@@ -413,5 +409,10 @@ namespace keyboard
 		const ULONGLONG t = GetTickCount64();
 		if (any) g_lastActive = t;
 		return any || t - g_lastActive < 400;
+	}
+
+	bool ScriptRunning()
+	{
+		return g_script.kind != Script::kNone;
 	}
 }

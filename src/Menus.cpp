@@ -17,6 +17,7 @@ namespace menus
 
 		reflect::Handle g_inventoryWidget, g_magicWidget;   // the menu widgets last activated (game thread)
 
+		std::atomic<ULONGLONG> g_lastClosed{ 0 };
 		std::atomic<UE::UFunction*> g_fnActivated{ nullptr };
 		std::atomic<UE::UFunction*> g_fnDeactivated{ nullptr };
 
@@ -45,6 +46,7 @@ namespace menus
 					return;
 				}
 			}
+			if (deactivated) g_lastClosed.store(GetTickCount64());
 			auto* cls = a_obj->GetClass();
 			auto& flag = cls == g_inventoryClass.load() ? g_inventoryActive : g_magicActive;
 			flag.store(activated);
@@ -79,8 +81,14 @@ namespace menus
 		TryWatch(g_magicClass, kMagicPath, g_magicActive, "magic menu");
 	}
 
-	bool AnyOpen()
+	std::uint64_t MsSinceClosed()
 	{
+		const auto t = g_lastClosed.load();
+		return t ? GetTickCount64() - t : ~0ull;
+	}
+
+	bool AnyOpen()
+{
 		return InMenuMode();
 	}
 

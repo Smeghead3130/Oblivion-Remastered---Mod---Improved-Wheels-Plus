@@ -41,6 +41,7 @@ namespace wheels
 		// what the wheel's pictures are showing now
 		enum class Shown { kGame, kMagic };
 		Shown g_shown = Shown::kGame;
+		ULONGLONG g_keepUntil = 0;   // until then a radial that opens keeps the wheel that is active (a wheel's own button or a keyboard key chose it)
 
 		const char* WheelName(int a_wheel) { return a_wheel >= 0 && a_wheel < kWheels ? kWheelNames[a_wheel] : "?"; }
 
@@ -913,8 +914,18 @@ namespace wheels
 			return t == RE::FormType::Weapon || t == RE::FormType::Armor || t == RE::FormType::Clothing || t == RE::FormType::Light;
 		}
 
-		void DriveUse()
+		// a potion, a poison or an ingredient: used (drunk, eaten) through the same call that puts equipment on - for the mouse click and the keyboard's
+		// slot keys, whose radial the game's own key press could not be waited out of
+		bool Consumable(std::uint32_t a_id)
 		{
+			auto* form = a_id ? RE::TESForm::LookupByID(a_id) : nullptr;
+			if (!form) return false;
+			const auto t = form->GetFormType();
+			return t == RE::FormType::AlchemyItem || t == RE::FormType::Ingredient;
+		}
+
+		void DriveUse()
+{
 			if (!g_use.on) {
 				return;
 			}
@@ -1170,6 +1181,13 @@ namespace wheels
 				}
 			}
 		}
+		if (w == kAmmo) {   // the radial's Ammo view: the counters sit at the ring positions the arrows are drawn at
+			std::array<SlotCount, 8> ring{};
+			for (int r = 0; r < 8; ++r) {
+				if (const int s2 = AmmoSlotAtRing(r); s2 >= 0) ring[r] = out[s2];
+			}
+			return ring;
+		}
 		return out;
 	}
 
@@ -1222,8 +1240,35 @@ namespace wheels
 		return out;
 	}
 
-	void Favourite(menus::Menu a_menu)
+	// The Ammo wheel as the shortcut's half wheel lays it out: the favourited arrows packed in slot order (five at most), the first count placed at
+	// the ring positions ammo::LayoutSlots gives. The radial's Ammo view draws and chooses by the same places.
+	int AmmoSlotAtRing(int a_ring)
 	{
+		if (a_ring < 0 || a_ring > 7) return -1;
+		const auto  slots = AmmoSlots();
+		std::vector<int> used;
+		for (int s = 0; s < 8 && used.size() < 5; ++s) {
+			if (slots[s]) used.push_back(s);
+		}
+		const auto layout = ammo::LayoutSlots(static_cast<int>(used.size()));
+		for (std::size_t i = 0; i < used.size(); ++i) {
+			if (layout[i] - 1 == a_ring) return used[i];
+		}
+		return -1;
+	}
+
+	std::array<std::uint32_t, 8> AmmoRingSlots()
+	{
+		std::array<std::uint32_t, 8> out{};
+		const auto                   slots = AmmoSlots();
+		for (int r = 0; r < 8; ++r) {
+			if (const int s = AmmoSlotAtRing(r); s >= 0) out[r] = slots[s];
+		}
+		return out;
+	}
+
+	void Favourite(menus::Menu a_menu)
+{
 		if (!EnsureLoaded()) {
 			return;
 		}
@@ -1392,17 +1437,23 @@ namespace wheels
 		}
 	}
 
-	void SetActive(Wheel a_wheel)
+	void KeepActive()
 	{
+		g_keepUntil = GetTickCount64() + 1500;
+	}
+
+	void SetActive(Wheel a_wheel)
+{
 		if (a_wheel == Wheel::kAmmo && !(settings::Get().ammoWheel && ammo::BowHeld())) {
 			logger::info("wheels: the Ammo wheel's button - no bow is held, nothing to show");
 			return;
 		}
-		if (a_wheel == Active()) {
+		g_keepUntil = GetTickCount64() + 1500;   // this press chose the wheel the radial opens on
+if (a_wheel == Active()) {
 			return;
 		}
 		g_active.store(static_cast<int>(a_wheel));
-		logger::info("wheels: the {} wheel's own button - it is the active wheel", Name(a_wheel));
+logger::info("wheels: the {} wheel's own button - it is the active wheel", Name(a_wheel));
 		if (quickkeys::RadialOpen() && EnsureLoaded()) {
 			ShowMagic(a_wheel == Wheel::kMagic);
 		}
@@ -1434,14 +1485,15 @@ namespace wheels
 		// thread (lock argument false). The game's own quick-key press (Quick<N>Input_Pressed / _Released) equipped nothing
 		// in any of the 9 RB / A uses of 2026-10-01 02:32-02:37 ("unchanged 0.7 s after the game's key press ... FALLBACK"),
 		// and the EquipObject fallback worked every time ("(x1, worn)") - so the press and its 0.7 s wait are gone for it.
-		if (Equippable(id)) {
+		if (Equippable(id) ||Consumable(id)) {
 			if (g_use.before.worn) {
 				// what the game's own quick key does with an item already worn (unequip it, or nothing) is not known from the
 				// code or the game - the key press itself did nothing at all - so nothing is done, and said
+				// choosing the slot of an item that is already on takes it off
 				g_use.on = false;
-				g_lastUse = std::format("slot {}: {} already worn - nothing done", a_slot + 1, inventory::NameOf(id));
-				logger::info("wheels: USE Equipment slot {} ({}) - {} is already worn ({}); nothing done (what the game's own quick key does with a worn item is not known)",
-					a_slot + 1, a_how, inventory::NameOf(id), inventory::Describe(g_use.before));
+				g_lastUse = std::format("slot {}: {} was worn - taken off", a_slot + 1, inventory::NameOf(id));
+				logger::info("wheels: USE Equipment slot {} ({}) - {} is already worn ({}): taken off", a_slot + 1, a_how, inventory::NameOf(id), inventory::Describe(g_use.before));
+				inventory::UnequipKeyed(id);
 				return;
 			}
 			g_use.direct = true;
@@ -1503,9 +1555,14 @@ namespace wheels
 		if (!EnsureLoaded()) {
 			return;
 		}
-		const Slot& slot = g_wheels[kAmmo][a_slot];
+		const int ammoSlot = AmmoSlotAtRing(a_slot);   // a_slot is the ring position pointed
+		if (ammoSlot < 0) {
+			logger::info("wheels: nothing sits at ring position {} of the Ammo wheel", a_slot + 1);
+			return;
+		}
+		const Slot& slot = g_wheels[kAmmo][ammoSlot];
 		if (slot.active < 0 || slot.active >= static_cast<int>(slot.entries.size())) {
-			logger::info("wheels: Ammo slot {} is empty", a_slot + 1);
+			logger::info("wheels: Ammo slot {} is empty", ammoSlot + 1);
 			return;
 		}
 		logger::info("wheels: Ammo slot {} used - {}", a_slot + 1, inventory::NameOf(slot.entries[static_cast<std::size_t>(slot.active)]));
@@ -1527,7 +1584,12 @@ namespace wheels
 
 	void RadialShown()
 	{
-		if (Active() == Wheel::kAmmo && !(settings::Get().ammoWheel && ammo::BowHeld())) {
+		if (!settings::Get().rememberWheel && GetTickCount64() >= g_keepUntil && Active() != Wheel::kEquipment) {   // a plain open starts on the Equipment wheel, whichever wheel it was left on
+			g_active.store(static_cast<int>(Wheel::kEquipment));
+			logger::info("wheels: the radial opens on the Equipment wheel (bRememberWheel=0)");
+		}
+		g_keepUntil = 0;
+if (Active() == Wheel::kAmmo && !(settings::Get().ammoWheel && ammo::BowHeld())) {
 			g_active.store(static_cast<int>(Wheel::kEquipment));
 		}
 		if (EnsureLoaded()) {

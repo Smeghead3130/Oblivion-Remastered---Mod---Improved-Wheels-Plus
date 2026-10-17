@@ -74,6 +74,9 @@ namespace settings
 		if (std::filesystem::exists(ini)) {
 			v.logLevel = ReadInt(ini, L"Log", L"uLogLevel", v.logLevel, 0, 4);
 			v.entriesPerSlot = ReadInt(ini, L"Wheel", L"uEntriesPerSlot", v.entriesPerSlot, 1, 16);
+			v.pointFilledOnly = ReadInt(ini, L"Wheel", L"bPointFilledOnly", v.pointFilledOnly ? 1 : 0, 0, 1) != 0;
+			v.rememberWheel = ReadInt(ini, L"Wheel", L"bRememberWheel", v.rememberWheel ? 1 : 0, 0, 1) != 0;
+			v.chooseOnClose = ReadInt(ini, L"Wheel", L"bChooseOnClose", v.chooseOnClose ? 1 : 0, 0, 1) != 0;
 			v.centreRestSnap = ReadInt(ini, L"Wheel", L"bCentreRestSnap", v.centreRestSnap, 0, 1) != 0;
 			v.restSnapMs = ReadInt(ini, L"Wheel", L"uRestSnapMs", v.restSnapMs, 30, 1000);
 			v.ammoWheel = ReadInt(ini, L"AmmoWheel", L"bEnabled", v.ammoWheel, 0, 1) != 0;
