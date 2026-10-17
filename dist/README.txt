@@ -112,5 +112,5 @@ LICENCE
 -------
   GPL-3.0-or-later (LICENSE, NOTICE.md). Copyright (C) 2026 ApocryphaRealm; the additions of this build Copyright (C) 2026 cfa911.
   Built on CommonLibOB64 (GPL-3.0); spdlog and the other linked components are listed with their notices in THIRD_PARTY_NOTICES.md.
-  Source of this build: https://github.com/cfa911/ImprovedWheelMenuOR-Controller-Keyboard-Support
+  Source of this build: https://github.com/cfa911/Improved-Wheel-Keyboard-and-Better-Controller-Support
   Original: https://github.com/ApocryphaRealm/ImprovedWheelMenuOR
