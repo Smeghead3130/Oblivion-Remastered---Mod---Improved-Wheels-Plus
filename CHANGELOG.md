@@ -5,28 +5,23 @@ in `git log`. A version number is issued by the version gate only once a build i
 
 ## 1.1.2 - 2026-10-18 - Improved Wheel - Keyboard and Better Controller Support
 
-### Changed
-- A left mouse click on the radial or the assign panel is now simply the A button on the slot the mouse already points at (the game points by the mouse's angle, as by the stick's); the cell hit-test and the stick script behind the old click are gone.
-
 ### Added
-- INI `[Wheel] bPointFilledOnly` (1 by default): on the Equipment, Magic and Ammo wheels the stick points only at slots that hold something - empty slots are skipped, the stick's direction goes to the nearest filled slot - as the Ammo shortcut always did.
-- Choosing the slot of a weapon, armour or clothing that is already worn (A, RB or closing with bChooseOnClose) takes it off.
-- INI `[Wheel] bRememberWheel` (1 by default, as always): the radial opens on the wheel it was left on. 0 makes it always open on the Equipment wheel.A wheel's own button (uMagicWheelButton ...) and the keyboard's own presses (its wheel button, a slot key, a wheel's key) still open the wheel they left or chose.
-- INI `[Wheel] bChooseOnClose` (0 by default): with 1, closing the wheel by its button (let go, or pressed again) uses the slot the stick points at on whichever wheel is up (Equipment, Magic or Ammo), so pointing is enough and A or RB are not needed.B still closes without using anything.
+- INI `[Wheel] bPointFilledOnly` (1 by default): on the Equipment, Magic and Ammo wheels the stick points only at slots that hold something. Empty slots are skipped: the stick's direction goes to the nearest filled slot, as the Ammo shortcut always did.
+- INI `[Wheel] bChooseOnClose` (0 by default): with 1, closing the wheel by its button (let go, or pressed again) uses the slot the stick points at on whichever wheel is up (Equipment, Magic or Ammo), so pointing is enough and A or RB are not needed. B still closes without using anything.
+- INI `[Wheel] bRememberWheel` (1 by default, as always): the radial opens on the wheel it was left on. 0 makes it always open on the Equipment wheel. A wheel's own button (uMagicWheelButton ...) and the keyboard's own presses (its wheel button, a slot key, a wheel's key) always open the wheel they chose.
+- Choosing the slot of a weapon, armour or clothing that is already worn (A, RB, a click, or closing with bChooseOnClose) takes it off.
 
 ### Changed
-- The texts inside the wheels (the slot counters and the centre name) are a soft grey instead of white, a little smaller, and carry no shadow.
-- All the wheels' own texts (the name above the wheel, the slot counters, the centre name of the pointed slot on the Equipment, Magic and Ammo wheels) use the game's UI font (Font_Robinson_Localized), the same white with a shadow,and one size each,except the name above the wheel, which is smaller, in the gold of the wheel's ring with a black outline and a shadow; the Equipment wheel's centre name was the game's own text in another font and size.
-
-### Fixed
-- The Ammo wheel shows the name of the pointed arrows inside the wheel, like the other wheels - the radial's Ammo view read the name by the wrong slot, and the shortcut's half wheel drew it outside to the left.
-- A potion clicked with the mouse (or chosen by a slot key) on the Equipment wheel was never used: the use waited for the radial to close and the radial stayed open.A potion, poison or ingredient chosen on the Equipment wheel, whichever way (click, A, RB or closing the wheel), is now used at once, as equipment is; if the radial is still open 400 ms after a use, B closes it.
-- The wheel button pressed within a moment of closing the Inventory or the Magic menu no longer reads as "in a menu" (the game reports menu mode a little longer while a menu closes), which left the wheel dead for that press.
-- The Ammo view of the radial (LB, then D-pad right until the Ammo wheel) puts the arrows where the shortcut's half wheel puts them (packed from the middle: one at the left, two above and below it, ...), with the counters and the choice (A or RB, LT / RT to step) at those places. Before, the arrows sat in the Ammo slots' own ring positions.
-
-### Changed
+- A left mouse click on the radial or the assign panel is now simply the A button on the slot the mouse already points at (the game points by the mouse's angle, as by the stick's). The cell hit-test and the stick script behind the old click are gone.
+- All the wheels' own texts use the game's UI font (Font_Robinson_Localized): the name above the wheel is gold with a black outline and a shadow, the slot counters and the centre name of the pointed slot are a soft grey, a little smaller, without shadow. The centre name now comes from our own label on all three wheels (the Equipment wheel used the game's own text, in another font and size).
 - The mod is called **Improved Wheel - Keyboard and Better Controller Support** (it was Improved Wheel Menu - Controller and Keyboard Support). The plugin file is still `ImprovedWheelMenu.dll`, so it still replaces the original and your settings and wheels keep working.
 - The plugin finds the controller keyboard under its new file name (`MenuSearchControllerKeyboard.dll`, mod name Menu Search - Controller Keyboard) as well as the old one (`OblivionSearchKeyboard.dll`) and stands aside while it is open.
+- The wheel's log is warnings and errors only by default (uLogLevel=3), and the self-check file is only written at uLogLevel 2 or lower.
+
+### Fixed
+- A potion, poison or ingredient chosen on the Equipment wheel was not used when chosen with a mouse click (the use waited for the radial to close, and it stayed open). It is now used at once, however it is chosen; if the radial is still open 400 ms after a use, B closes it.
+- The wheel button pressed within a moment of closing the Inventory or the Magic menu no longer reads as "in a menu" (the game reports menu mode a little longer while a menu closes), which left the wheel dead for that press.
+- The Ammo view of the radial (LB, then D-pad right until the Ammo wheel) puts the arrows where the shortcut's half wheel puts them (packed from the middle), with the counters, the pointed name and the choice (A or RB, LT / RT to step) at those places. The Ammo wheel shows the pointed arrows' name inside the wheel on both the radial and the shortcut.
 
 ## 1.1.1 - 2026-10-17 - Controller and Keyboard Support build
 
