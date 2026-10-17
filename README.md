@@ -1,4 +1,4 @@
-# Improved Wheel Menu - Controller and Keyboard Support (Oblivion Remastered)
+# ImprovedWheel Menu - Keyboard and BetterController Support (Oblivion Remastered)
 
 A fork of [Improved Wheel Menu](https://github.com/ApocryphaRealm/ImprovedWheelMenuOR) by ApocryphaRealm, version **1.1.1** of this fork.
 
