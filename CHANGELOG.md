@@ -15,6 +15,7 @@ in `git log`. A version number is issued by the version gate only once a build i
 
 ### Fixed
 - Potions, enchanted gear and other items the player named got no white star, and some no icon on the wheel: their rows could not be matched to the item. A row is now matched by its typed name, then by its weight and count, and rows that still look alike are paired with the items in list order, so a favourite lights only its own row (items with the same name, weight and count cannot be told apart by their numbers and are paired in list order).
+- After loading a game a slot could show `-/5` when all its potions had been used in the previous session: a slot that holds entries but shows none now takes its first usable entry.
 - When the item a slot shows is used up (the last potion of a stack) or gone, the slot moves on to its next entry instead of showing -/5.
 - Choosing a spell on the Magic wheel now uses the game's own spell selection, as the Magic menu does: the first cast has the right animation and sound (it had the previous spell's animation and no sound).
 - The Magic wheel's icon reading no longer crashes the game when a spell is given a slot while the Magic menu rebuilds its list.

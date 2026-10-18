@@ -315,6 +315,19 @@ namespace wheels
 						continue;
 					}
 				}
+				// a slot that holds entries but shows none (the entry it showed was not carried when the save loaded, so it was dropped and nothing took its
+				// place): its first usable entry becomes the shown one - the wheel read -/5 after a session in which a stack was used up
+				if (want < 0 && keyed < 0 && !slot.entries.empty()) {
+					if (const int next = NextEquipment(s, -1, +1); next >= 0 && inventory::SetKey(slot.entries[next], s)) {
+						logger::info("wheels: Equipment slot {} showed nothing - {} is the slot's entry now ({} of {})", s + 1, inventory::NameOf(slot.entries[next]), next + 1,
+							slot.entries.size());
+						slot.active = next;
+						keys[s] = slot.entries[next];
+						changed = true;
+						advanced.push_back(s);
+						continue;
+					}
+				}
 				slot.active = keyed;
 			}
 			if (changed) {
