@@ -3,6 +3,11 @@
 Written as changes happen, not reconstructed afterwards (rule 61). Started 2026-09-29; the history before this file is
 in `git log`. A version number is issued by the version gate only once a build is seen working in game (rule 48).
 
+## 1.1.3 - 2026-10-18 - Improved Wheel - Keyboard and Better Controller Support
+
+### Fixed
+- The wheels no longer interfere: choosing a spell or arrows on the Magic or Ammo wheel could use a potion that sat on the same slot of the game's own wheel (the game used its pointed key as the radial closed). The game's own pointed key is now cleared on every close - Magic, Ammo, Equipment, B and a close on nothing - and each wheel uses only what it chose itself.
+
 ## 1.1.2 - 2026-10-18 - Improved Wheel - Keyboard and Better Controller Support
 
 ### Added

@@ -159,6 +159,7 @@ namespace pad
 				g_radialAway = false;
 				g_radialResting = true;
 				g_radialRestSince = a_now;
+				quickkeys::RestorePointer(open ? "the wheel opened" : "the wheel closed");   // a clear on a close hid the arrow: back for every opening
 				if (g_snapped) {
 					quickkeys::RestorePointer(open ? "the wheel opened" : "the wheel closed");
 				}
@@ -240,14 +241,14 @@ namespace pad
 		// the HUD radial is closing on a slot of the Magic wheel: the game must use nothing, the spell is ours to set
 		void CloseOnAmmo(int a_slot)
 		{
-			quickkeys::CancelChoice();
+			quickkeys::ClearPointer();   // the game's own pointed key too: its close must use nothing
 			wheels::UseAmmo(a_slot);
 			g_closingMagic = true;   // held clear until the radial has closed
 		}
 
 		void CloseOnMagic(int a_slot)
 		{
-			quickkeys::CancelChoice();
+			quickkeys::ClearPointer();   // the game's own pointed key too: a potion on the same slot of its own wheel was used by its close
 			wheels::UseMagic(a_slot);
 			// the radial takes a moment to close and the stick still points meanwhile: the game pointed the slot again and
 			// used ITS key there (2026-09-30 04:37:34, "the game uses slot 3" right after a Magic choice) - held off until closed
@@ -262,7 +263,7 @@ namespace pad
 		void CloseOnNothing(const char* a_how)
 		{
 			const int pointed = PointedKey();
-			quickkeys::CancelChoice();
+			quickkeys::ClearPointer();
 			g_closingMagic = true;
 			logger::info("pad: the wheel closed by {} - nothing used{}", a_how,
 				pointed >= 0 ? std::format(" (slot {} was pointed: RB or A uses a slot)", pointed + 1) : std::string());
@@ -275,7 +276,7 @@ namespace pad
 		// A key holding a spell is drawn empty (MagicWheel.cpp) and uses nothing - spells are the Magic wheel's.
 		void CloseOnEquipment(int a_slot, const char* a_how)
 		{
-			quickkeys::CancelChoice();
+			quickkeys::ClearPointer();   // every wheel is its own: the game's close uses nothing on any of them
 			g_closingMagic = true;   // held clear and centred until the radial has closed
 			g_forceClose = true;     // a wheel opened with a tap and clicked with the mouse did not close by itself: a potion was never used
 			g_forceCloseAt = GetTickCount64() + 400;
@@ -702,7 +703,7 @@ namespace pad
 				}
 				if (quickkeys::RadialOpen() && (pressed & XINPUT_GAMEPAD_B)) {
 					// B backs out: nothing is used, the wheel closes
-					quickkeys::CancelChoice();
+					quickkeys::ClearPointer();
 					g_latched = false;
 					if (raw & wheelBtn) { g_suppressDown = true; }
 					g_swallowB = true;
@@ -797,6 +798,7 @@ namespace pad
 			if (g_closingMagic) {
 				if (!quickkeys::RadialOpen()) {
 					g_closingMagic = false;
+					quickkeys::RestorePointer("the radial closed");   // the selector arrow back for the next opening
 				} else {
 					a_pad.sThumbRX = 0;
 					a_pad.sThumbRY = 0;
