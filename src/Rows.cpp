@@ -27,6 +27,7 @@ namespace rows
 			std::int32_t properties = -1;   // the row widget's Properties struct
 			std::int32_t name = -1, icon = -1, form = -1, index = -1;   // index: InventoryIndex
 			std::int32_t inContainer = -1, playerItem = -1;   // bIsInContainerMenu, bIsInventoryItem (inventory rows)
+			std::int32_t weight = -1, count = -1;   // Weight (float), Count (int32): what tells apart items that share a typed name
 			reflect::Handle highlighted;   // kept across frames: resolved through its slot before every use
 			UE::UFunction* fnSelection = nullptr;   // this row class's BP_OnItemSelectionChanged
 			std::unordered_map<UE::UObject*, std::int32_t> seen;   // row -> its object-array slot
@@ -65,6 +66,63 @@ namespace rows
 		// An inventory row's item. Its Properties.form is null in the player's inventory (read 2026-09-29: Iron Arrow,
 		// bIsInventoryItem true, form null), so the name decides: its string-table key is the item's full name in the
 		// game data; a name the player gave (an enchanted item) is not from a table and is matched as it reads.
+		int IndexOfRow(Kind& a_kind, UE::UObject* a_row);
+
+		// An item the player named (a crafted potion, an enchanted piece) has no string-table key: its full name is a placeholder and the row's text is
+		// the typed text. Several items can share that text, and the row's InventoryIndex is only within about 2 of the item's place in the list, so the
+		// row's own numbers decide: of the carried items with that typed text, the one whose weight matches the row's Weight (and, when two match, whose
+		// count matches the row's Count).
+		std::uint32_t CustomItemOfRow(UE::UObject* a_row, void* a_props, const std::string& a_text)
+		{
+			const auto* weight = reflect::At<float>(a_props, g_inventory.weight);
+			const auto* count = reflect::At<std::int32_t>(a_props, g_inventory.count);
+			const int   idx = IndexOfRow(g_inventory, a_row);
+			// the carried items with this typed text, narrowed by the row's Weight and then Count
+			std::vector<inventory::Carried> cands;
+			for (const auto& c : inventory::CarriedWithTypedNames()) {
+				if (DisplayName(c.id) == a_text && (!weight || c.weight < 0.0f || std::fabs(*weight - c.weight) <= 0.06f)) cands.push_back(c);
+			}
+			if (cands.size() > 1 && count) {
+				std::vector<inventory::Carried> same;
+				for (const auto& c : cands) {
+					if (c.count == *count) same.push_back(c);
+				}
+				if (!same.empty()) cands = std::move(same);
+			}
+			if (cands.empty()) return 0;
+			if (cands.size() == 1) return cands.front().id;
+			// still several: the live rows that look just like this one take the candidates in order - rows by InventoryIndex, items by their place in the
+			// list (the two orders agree to within a place or two, so the order is the same even where the numbers are not)
+			std::vector<std::pair<int, UE::UObject*>> twins;   // InventoryIndex, row
+			for (const auto& [obj, slot] : g_inventory.seen) {
+				auto* row = reflect::Get(obj, slot);
+				void* p = row ? PropsOf(g_inventory, row) : nullptr;
+				if (!p) continue;
+				const auto* n = reflect::At<UE::FText>(p, g_inventory.name);
+				const auto* w = reflect::At<float>(p, g_inventory.weight);
+				const auto* k = reflect::At<std::int32_t>(p, g_inventory.count);
+				if (!n || NameOfRow(g_inventory, row) != a_text) continue;
+				if (weight && w && std::fabs(*w - *weight) > 0.06f) continue;
+				if (count && k && *k != *count) continue;
+				twins.emplace_back(IndexOfRow(g_inventory, row), row);
+			}
+			std::sort(twins.begin(), twins.end());
+			std::sort(cands.begin(), cands.end(), [](const auto& a, const auto& b) { return inventory::PositionOf(a.id) < inventory::PositionOf(b.id); });
+			if (twins.size() == cands.size()) {
+				for (std::size_t r = 0; r < twins.size(); ++r) {
+					if (twins[r].second == a_row) return cands[r].id;
+				}
+			}
+			// some twins are not built (the list shows only part of its rows): the item whose place is nearest to the row's index
+			std::uint32_t best = 0;
+			int           bestDist = 1 << 30;
+			for (const auto& c : cands) {
+				const int d = std::abs(inventory::PositionOf(c.id) - idx);
+				if (d < bestDist) bestDist = d, best = c.id;
+			}
+			return best;
+		}
+
 		std::uint32_t FormOfInventoryRow(UE::UObject* a_row)
 		{
 			void* props = PropsOf(g_inventory, a_row);
@@ -79,10 +137,11 @@ namespace rows
 				}
 			}
 			const std::string key = KeyOfRow(g_inventory, a_row);
-			if (const auto id = inventory::FindByName(key.empty() ? NameOfRow(g_inventory, a_row) : key)) {
+			const std::string text = NameOfRow(g_inventory, a_row);
+			if (const auto id = inventory::FindByName(key.empty() ? text : key)) {
 				return id;
 			}
-			return 0;
+			return key.empty() && !text.empty() ? CustomItemOfRow(a_row, props, text) : 0u;
 		}
 
 		UE::UObject* IconOfRow(Kind& a_kind, UE::UObject* a_row)
@@ -164,6 +223,8 @@ namespace rows
 			a_kind.name = reflect::Offset(props, "Name");
 			a_kind.icon = reflect::Offset(props, "Icon");
 			a_kind.index = reflect::Offset(props, "InventoryIndex");
+			a_kind.weight = reflect::Offset(props, "Weight");
+			a_kind.count = reflect::Offset(props, "Count");
 			a_kind.form = a_hasForm ? reflect::Offset(props, "form") : -1;
 			if (a_hasForm) {
 				a_kind.inContainer = reflect::Offset(props, "bIsInContainerMenu");

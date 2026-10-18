@@ -7,6 +7,7 @@
 #include "QuickKeys.h"
 #include "Rows.h"
 #include "Settings.h"
+#include "TesThread.h"
 #include "Ui.h"
 
 #include <fstream>
@@ -69,6 +70,7 @@ namespace wheels
 
 		bool AllowedOnEquipment(std::uint32_t a_id)
 		{
+			if (settings::Get().armourOnWheel) return true;   // bArmourOnWheel: armour and clothing too
 			bool shield = false;
 			return !Wearable(a_id, &shield) || shield;
 		}
@@ -218,10 +220,19 @@ namespace wheels
 		//   * a slot whose key holds nothing gets its active entry back on the key; a key on another entry of the same slot
 		//     is moved back to the active one.
 		// (The 2026-10-01 01:50 case - a wheel file written beside another save - is settled the same way: the file wins.)
+		int           g_holdKey = -1;      // the quick key taken off its item while the radial closes on another wheel's slot
+		std::uint32_t g_holdItem = 0;
+
+		int  NextEquipment(int a_slot, int a_from, int a_dir, std::string* a_skipped = nullptr);
+		void RemoveLeavers();
+		void PatchEquipment(int a_slot);
+		void Refresh();
+
 		void Reconcile()
 		{
 			auto keys = inventory::Keys();
 			bool changed = false, cleared = false;
+			std::vector<int> advanced;
 			for (int s = 0; s < inventory::kSlots; ++s) {
 				const auto id = keys[s];
 				Slot& slot = g_wheels[kEquip][s];
@@ -281,6 +292,7 @@ namespace wheels
 			}
 			// each slot's active entry on its key
 			for (int s = 0; s < inventory::kSlots; ++s) {
+				if (s == g_holdKey) continue;   // taken off on purpose, back when the radial has closed
 				Slot& slot = g_wheels[kEquip][s];
 				const int keyed = keys[s] ? IndexOf(slot, keys[s]) : -1;
 				const int want = slot.active >= 0 && slot.active < static_cast<int>(slot.entries.size()) ? slot.active : -1;
@@ -290,10 +302,25 @@ namespace wheels
 					keys[s] = slot.entries[want];
 					continue;
 				}
+				// the active entry is gone from the bag (the last potion of a stack was drunk, the item sold or dropped): the slot moves on
+				// to its next entry that can be used, instead of showing nothing
+				if (want >= 0 && keyed < 0 && !Unreachable(s, slot.entries[want], keys).empty()) {
+					if (const int next = NextEquipment(s, want, +1); next >= 0 && next != want && inventory::SetKey(slot.entries[next], s)) {
+						logger::info("wheels: Equipment slot {}: {} is gone - {} is the slot's entry now ({} of {})", s + 1, inventory::NameOf(slot.entries[want]),
+							inventory::NameOf(slot.entries[next]), next + 1, slot.entries.size());
+						slot.active = next;
+						keys[s] = slot.entries[next];
+						changed = true;
+						advanced.push_back(s);
+						continue;
+					}
+				}
 				slot.active = keyed;
 			}
 			if (changed) {
 				Save();
+				for (const int s : advanced) PatchEquipment(s);
+				if (!advanced.empty()) Refresh();
 			}
 		}
 
@@ -362,6 +389,7 @@ namespace wheels
 			// moved itself - reconciling first (the favourites column and the slot counters ask every 100 ms) took the
 			// arrival as already "in the slot"
 			if (!AssignPending()) {
+				RemoveLeavers();
 				Reconcile();
 			}
 			MigrateAmmo();
@@ -547,7 +575,7 @@ namespace wheels
 
 		// The entry of an Equipment slot to make active after a_from (dir +1/-1): carried, and not active in another slot.
 		// Every entry passed over is named with its reason in *a_skipped.
-		int NextEquipment(int a_slot, int a_from, int a_dir, std::string* a_skipped = nullptr)
+		int NextEquipment(int a_slot, int a_from, int a_dir, std::string* a_skipped)
 		{
 			const Slot& slot = g_wheels[kEquip][a_slot];
 			const int n = static_cast<int>(slot.entries.size());
@@ -601,6 +629,41 @@ namespace wheels
 			logger::info("wheels: {} - {} REMOVED from {} slot {}; slot now {} entr{} (active: {})", a_why, NameOf(a_wheel, gone),
 				WheelName(a_wheel), a_slot + 1, slot.entries.size(), slot.entries.size() == 1 ? "y" : "ies",
 				slot.active >= 0 ? NameOf(a_wheel, slot.entries[slot.active]) : "none");
+		}
+
+		// Favourites the player dropped or sold (bBlockFavouriteDropSell=0): once none is carried they leave every wheel, the Equipment
+		// wheel's key going to the slot's next entry.
+		std::unordered_set<std::uint32_t> g_leaving;
+
+		void RemoveLeavers()
+		{
+			if (g_leaving.empty()) {
+				return;
+			}
+			const auto before = inventory::Keys();
+			bool       any = false;
+			for (auto it = g_leaving.begin(); it != g_leaving.end();) {
+				if (inventory::Has(*it)) {
+					++it;
+					continue;
+				}
+				const auto id = *it;
+				for (const int w : { static_cast<int>(kEquip), static_cast<int>(kAmmo), static_cast<int>(kFav) }) {
+					for (int s = 0; s < inventory::kSlots; ++s) {
+						for (int idx = IndexOf(g_wheels[w][s], id); idx >= 0; idx = IndexOf(g_wheels[w][s], id)) {
+							RemoveAt(w, s, idx, "dropped or sold");
+							any = true;
+						}
+					}
+				}
+				g_takenOff.erase(id);
+				it = g_leaving.erase(it);
+			}
+			if (any) {
+				Save();
+				PatchChanged(before);
+				Refresh();
+			}
 		}
 
 		// Taking an item off the wheel the normal way unfavourites it (the owner, 2026-09-29: "I just removed the item from
@@ -898,6 +961,7 @@ namespace wheels
 			bool                                  closed = false;
 			bool                                  pressed = false;
 			bool                                  direct = false;   // equipped at once through Actor::EquipObject: only the read-back is left
+			bool                                  waitClose = false;   // a potion, poison or ingredient: used through the same call, but only once the radial has closed
 			int                                   key = -1;
 			std::uint32_t                         id = 0;
 			inventory::State                      before{};
@@ -933,6 +997,28 @@ namespace wheels
 			const auto now = steady_clock::now();
 			const auto name = inventory::NameOf(g_use.id);
 			const int  n = g_use.key + 1;
+			if (g_use.direct && g_use.waitClose) {
+				if (quickkeys::RadialOpen()) {
+					if (now - g_use.armed > 3s) {
+						g_use.on = false;
+						g_lastUse = std::format("slot {}: the radial never closed", n);
+						logger::info("wheels: USE slot {} - the radial did not close within 3 s; {} not used", n, name);
+					}
+					return;
+				}
+				if (!g_use.closed) {
+					g_use.closed = true;
+					g_use.closedAt = now;
+				}
+				if (now - g_use.closedAt < 150ms) {
+					return;
+				}
+				g_use.waitClose = false;
+				g_use.verifyAt = now + 300ms;
+				inventory::EquipKeyed(g_use.id);
+				logger::info("wheels: USE Equipment slot {} ({}) - {}: used through Actor::EquipObject on the TES thread, the radial has closed", n, g_use.how, name);
+				return;
+			}
 			if (g_use.direct) {
 				if (now < g_use.verifyAt) {
 					return;
@@ -1111,6 +1197,13 @@ namespace wheels
 	Wheel Active()
 	{
 		return static_cast<Wheel>(g_active.load());
+	}
+
+	void NoteLeaving(std::uint32_t a_formID)
+	{
+		if (a_formID) {
+			g_leaving.insert(a_formID);
+		}
 	}
 
 	bool IsFavourite(std::uint32_t a_formID)
@@ -1497,6 +1590,13 @@ logger::info("wheels: the {} wheel's own button - it is the active wheel", Name(
 				return;
 			}
 			g_use.direct = true;
+			if (!Equippable(id)) {
+				// the game's own answer to a use it refuses ('You cannot drink any more potions right now') is a message that needs A; over a
+				// radial that is still open it kept the radial up and A never reached the message - so it is used once the radial is closed
+				g_use.waitClose = true;
+				logger::info("wheels: USE Equipment slot {} ({}) - {} ({}): used once the radial has closed", a_slot + 1, a_how, inventory::NameOf(id), inventory::Describe(g_use.before));
+				return;
+			}
 			g_use.verifyAt = g_use.armed + 300ms;
 			inventory::EquipKeyed(id);
 			logger::info("wheels: USE Equipment slot {} ({}) - {} ({}): equipped at once through Actor::EquipObject on the TES thread (no game key press, no wait for the close)",
@@ -1510,6 +1610,35 @@ logger::info("wheels: the {} wheel's own button - it is the active wheel", Name(
 	}
 
 	std::string LastUse() { return g_lastUse; }
+
+	void HoldKey(int a_slot)
+	{
+		if (a_slot < 0 || a_slot >= inventory::kSlots || g_holdKey >= 0 || !EnsureLoaded()) {
+			return;
+		}
+		const auto id = inventory::Keys()[static_cast<std::size_t>(a_slot)];
+		if (!id) {
+			return;   // nothing on the game's key: nothing for its close to use
+		}
+		g_holdKey = a_slot;
+		g_holdItem = id;
+		inventory::ClearSlot(a_slot);
+		logger::info("wheels: the game's key {} taken off {} while the radial closes (its close would use it)", a_slot + 1, inventory::NameOf(id));
+	}
+
+	void ReleaseKey()
+	{
+		if (g_holdKey < 0) {
+			return;
+		}
+		const int slot = g_holdKey;
+		const auto id = g_holdItem;
+		g_holdKey = -1;
+		g_holdItem = 0;
+		if (inventory::Has(id) && inventory::SetKey(id, slot)) {
+			logger::info("wheels: the game's key {} is back on {}", slot + 1, inventory::NameOf(id));
+		}
+	}
 
 	void UseMagic(int a_slot)
 	{
@@ -1531,16 +1660,24 @@ logger::info("wheels: the {} wheel's own button - it is the active wheel", Name(
 			logger::warn("wheels: Magic slot {} holds 0x{:08X}, which is not a spell now", a_slot + 1, slot.entries[slot.active]);
 			return;
 		}
-		// the SELECTED spell - the one the HUD shows and the cast button casts - is PlayerCharacter::selectedSpell (+0x8F0);
-		// SetCurrentSpell alone set the caster's current spell and left the HUD on the old one (the owner, 2026-09-30: "I
-		// selected a magic from the magic wheel, but the characters UI widget for their quick magic didn't change"). No
-		// reflected equip function exists (the primary's search): the field is set, and the HUD is read back half a second
-		// later to learn whether it follows by itself.
-		auto* before = player->selectedSpell;
-		player->selectedSpell = static_cast<RE::MagicItem*>(spell);
-		player->SetCurrentSpell(static_cast<RE::MagicItem*>(spell));
-		logger::info("wheels: Magic slot {} used - {} is now the selected spell ({})", a_slot + 1, rows::SpellName(spell->GetFormID()),
+		// the SELECTED spell - the one the HUD shows and the cast button casts - is set by the game's own PlayerCharacter::
+		// SetSelectedSpell, as the Magic menu does (a hardware write watch on the field showed that one function, RVA 0x66075B0,
+		// as its only writer, on the TES thread). It also drops the old spell's cast sound and tells the game the selection
+		// changed, so the first cast has its own animation and sound. Writing the field ourselves left both stale, and
+		// SetCurrentSpell (the caster's spell in use, which the menu never sets) took the sound away.
+		const auto formID = spell->GetFormID();
+		auto*      before = player->selectedSpell;
+		logger::info("wheels: Magic slot {} used - {} is now the selected spell ({})", a_slot + 1, rows::SpellName(formID),
 			before == static_cast<RE::MagicItem*>(spell) ? "it was already" : before ? "another spell was" : "none was");
+		if (before != static_cast<RE::MagicItem*>(spell)) {
+			testhread::Post([formID] {
+				auto* pc = RE::PlayerCharacter::GetSingleton();
+				auto* sp = RE::TESForm::LookupByID<RE::SpellItem>(formID);
+				if (!pc || !sp) return;
+				static REL::Relocation<void (*)(RE::PlayerCharacter*, RE::MagicItem*)> setSelected{ REL::ID(406972) };
+				setSelected(pc, static_cast<RE::MagicItem*>(sp));
+			});
+		}
 		g_hudCheckAt = std::chrono::steady_clock::now() + 500ms;
 		g_hudIconBefore = HudSpellIcon();
 		PushHudSpellIcon(spell->GetFormID());

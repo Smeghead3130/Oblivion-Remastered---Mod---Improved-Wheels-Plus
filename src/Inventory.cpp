@@ -167,6 +167,66 @@ namespace inventory
 		return 0;
 	}
 
+	std::vector<Carried> CarriedWithTypedNames()
+	{
+		std::vector<Carried> out;
+		auto*                items = Items();
+		if (!items) {
+			return out;
+		}
+		for (RE::ItemChange* item : *items) {
+			if (!item || !item->object || item->count <= 0) {
+				continue;
+			}
+			const char* n = RE::TESFullName::GetFullName(item->object);
+			if (!n || std::strncmp(n, "UI_UserInputText", 16) != 0) {
+				continue;
+			}
+			const RE::TESWeightForm* w = nullptr;   // a mixin: reached through the item's own class
+			switch (item->object->GetFormType()) {
+			case RE::FormType::Weapon: w = item->object->As<RE::TESObjectWEAP>(); break;
+			case RE::FormType::Armor: w = item->object->As<RE::TESObjectARMO>(); break;
+			case RE::FormType::Clothing: w = item->object->As<RE::TESObjectCLOT>(); break;
+			case RE::FormType::AlchemyItem: w = item->object->As<RE::AlchemyItem>(); break;
+			case RE::FormType::Ingredient: w = item->object->As<RE::IngredientItem>(); break;
+			default: break;
+			}
+			out.push_back({ item->object->GetFormID(), item->count, w ? w->weight : -1.0f });
+		}
+		return out;
+	}
+
+	int PositionOf(std::uint32_t a_formID)
+	{
+		auto* items = Items();
+		if (!items || !a_formID) {
+			return -1;
+		}
+		int i = 0;
+		for (RE::ItemChange* item : *items) {
+			if (item && item->object && item->object->GetFormID() == a_formID) {
+				return i;
+			}
+			++i;
+		}
+		return -1;
+	}
+
+	std::uint32_t AtPosition(int a_position)
+	{
+		auto* items = Items();
+		if (!items || a_position < 0) {
+			return 0;
+		}
+		int i = 0;
+		for (RE::ItemChange* item : *items) {
+			if (i++ == a_position) {
+				return item && item->object && item->count > 0 ? item->object->GetFormID() : 0u;
+			}
+		}
+		return 0;
+	}
+
 	void ClearKey(std::uint32_t a_formID)
 	{
 		auto* item = Find(a_formID);

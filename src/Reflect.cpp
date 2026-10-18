@@ -63,9 +63,59 @@ namespace reflect
 
 	bool Ok() { return g_state.load() > 0; }
 
+	namespace
+	{
+		// A row the engine is tearing down (its list was rebuilt, e.g. as a spell is given a wheel slot in the Magic menu) can still
+		// pass the liveness check while the text it held is already freed: the engine then faults reading it (crash 2026-10-18,
+		// StringTableIdAndKeyFromText through the Magic wheel's icon harvest). The reads are fault-guarded: such a text reads as empty.
+		// No C++ objects here: __try cannot unwind them.
+		bool Guarded(void (*a_fn)(void*), void* a_ctx)
+		{
+			__try {
+				a_fn(a_ctx);
+				return true;
+			} __except (GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH) {
+				return false;
+			}
+		}
+
+		struct ToStringCtx
+		{
+			const UE::FText* text;
+			std::string      out;
+		};
+
+		void ToStringRun(void* a_ctx)
+		{
+			auto* c = static_cast<ToStringCtx*>(a_ctx);
+			c->out = pe::Utf8(c->text->ToString());
+		}
+
+		struct EventCtx
+		{
+			UE::UObject*   obj;
+			UE::UFunction* fn;
+			void*          params;
+		};
+
+		void EventRun(void* a_ctx)
+		{
+			auto* c = static_cast<EventCtx*>(a_ctx);
+			c->obj->ProcessEvent(c->fn, c->params);
+		}
+	}
+
 	std::string Text(const UE::FText& a_text)
 	{
-		return TextSet(a_text) ? pe::Utf8(a_text.ToString()) : std::string();
+		if (!TextSet(a_text)) {
+			return {};
+		}
+		ToStringCtx ctx{ &a_text, {} };
+		if (!Guarded(&ToStringRun, &ctx)) {
+			logger::warn("reflect: a row's text could not be read (the row is being torn down) - read as empty");
+			return {};
+		}
+		return ctx.out;
 	}
 
 	bool TextSet(const UE::FText& a_text)
@@ -105,7 +155,11 @@ namespace reflect
 		}
 		std::vector<std::uint8_t> params(static_cast<std::size_t>(size), 0);
 		std::memcpy(params.data() + offText, &a_text, sizeof(UE::FText));   // borrowed: never destroyed here, so its reference count stays right
-		cdo->ProcessEvent(fn, params.data());
+		EventCtx ev{ cdo, fn, params.data() };
+		if (!Guarded(&EventRun, &ev)) {
+			logger::warn("reflect: a row's text key could not be read (the row is being torn down) - read as empty");
+			return {};
+		}
 		auto* key = reinterpret_cast<UE::FString*>(params.data() + offKey);
 		std::string out = params[offRet] ? pe::Utf8(*key) : std::string();
 		if (void* data = *reinterpret_cast<void**>(key)) {

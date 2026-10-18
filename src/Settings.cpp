@@ -75,6 +75,11 @@ namespace settings
 			v.logLevel = ReadInt(ini, L"Log", L"uLogLevel", v.logLevel, 0, 4);
 			v.entriesPerSlot = ReadInt(ini, L"Wheel", L"uEntriesPerSlot", v.entriesPerSlot, 1, 16);
 			v.pointFilledOnly = ReadInt(ini, L"Wheel", L"bPointFilledOnly", v.pointFilledOnly ? 1 : 0, 0, 1) != 0;
+			v.blockFavouriteDropSell = ReadInt(ini, L"Wheel", L"bBlockFavouriteDropSell", v.blockFavouriteDropSell ? 1 : 0, 0, 1) != 0;
+			v.starAtLeft = ReadInt(ini, L"Wheel", L"bFavouriteStarAtLeft", v.starAtLeft ? 1 : 0, 0, 1) != 0;
+			v.starX = ReadInt(ini, L"Wheel", L"iFavouriteStarX", v.starX, 0, 400);
+			v.starSpace = ReadInt(ini, L"Wheel", L"iFavouriteStarSpace", v.starSpace, 0, 200);
+			v.armourOnWheel = ReadInt(ini, L"Wheel", L"bArmourOnWheel", v.armourOnWheel ? 1 : 0, 0, 1) != 0;
 			v.rememberWheel = ReadInt(ini, L"Wheel", L"bRememberWheel", v.rememberWheel ? 1 : 0, 0, 1) != 0;
 			v.chooseOnClose = ReadInt(ini, L"Wheel", L"bChooseOnClose", v.chooseOnClose ? 1 : 0, 0, 1) != 0;
 			v.centreRestSnap = ReadInt(ini, L"Wheel", L"bCentreRestSnap", v.centreRestSnap, 0, 1) != 0;

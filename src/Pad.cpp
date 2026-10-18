@@ -121,6 +121,8 @@ namespace pad
 
 		bool g_forceClose = false;   // a use on the Equipment wheel is waiting for the radial to close; if it has not closed shortly, B closes it
 		ULONGLONG g_forceCloseAt = 0;
+		bool      g_leftToGame = false;   // the game keeps the radial open on purpose: its buttons go to the game until it closes
+		int       g_forceTries = 0;   // B pulses sent for this use: a radial the game keeps open on purpose (a message such as 'You cannot drink any more potions right now' waiting for A) must not be pulsed forever
 		int g_bPulse = 0;
 		bool g_closingMagic = false;   // the radial is closing on a Magic slot: the stick held centred, no slot pointed, until it has closed
 		bool g_magicPanel = false;   // the magic menu's panel is up (it reports no visibility change; tracked from our own toggles)
@@ -242,6 +244,7 @@ namespace pad
 		void CloseOnAmmo(int a_slot)
 		{
 			quickkeys::ClearPointer();   // the game's own pointed key too: its close must use nothing
+			wheels::HoldKey(a_slot);     // and nothing on its key of that slot to use if it points there again
 			wheels::UseAmmo(a_slot);
 			g_closingMagic = true;   // held clear until the radial has closed
 		}
@@ -249,6 +252,7 @@ namespace pad
 		void CloseOnMagic(int a_slot)
 		{
 			quickkeys::ClearPointer();   // the game's own pointed key too: a potion on the same slot of its own wheel was used by its close
+			wheels::HoldKey(a_slot);
 			wheels::UseMagic(a_slot);
 			// the radial takes a moment to close and the stick still points meanwhile: the game pointed the slot again and
 			// used ITS key there (2026-09-30 04:37:34, "the game uses slot 3" right after a Magic choice) - held off until closed
@@ -280,6 +284,7 @@ namespace pad
 			g_closingMagic = true;   // held clear and centred until the radial has closed
 			g_forceClose = true;     // a wheel opened with a tap and clicked with the mouse did not close by itself: a potion was never used
 			g_forceCloseAt = GetTickCount64() + 400;
+			g_forceTries = 0;
 			if (magicwheel::IsSpellKey(a_slot)) {
 				logger::info("pad: the inventory wheel closed on slot {}, whose game key holds a spell - nothing used", a_slot + 1);
 				return;
@@ -554,8 +559,12 @@ namespace pad
 				if (menu == menus::Menu::kInventory && (pressed & XINPUT_GAMEPAD_X)) {
 					const auto item = rows::HighlightedItem();
 					if (wheels::IsFavourite(item)) {
-						g_swallowX = true;
-						logger::info("pad: X on {} - a favourite cannot be dropped", inventory::NameOf(item));
+						if (settings::Get().blockFavouriteDropSell) {
+							g_swallowX = true;
+							logger::info("pad: X on {} - a favourite cannot be dropped", inventory::NameOf(item));
+						} else {
+							wheels::NoteLeaving(item);   // dropped: it leaves the wheel when none is carried
+						}
 					}
 				}
 				if (favButton == XINPUT_GAMEPAD_Y) {   // only when Y was taken for favourites
@@ -635,8 +644,12 @@ namespace pad
 				if (menus::AnyOpen() && !quickkeys::RadialOpen() && (pressed & XINPUT_GAMEPAD_A)) {
 					const auto item = rows::HighlightedPlayerItemInContainer();
 					if (wheels::IsFavourite(item)) {
-						g_swallowA = true;
-						logger::info("pad: A on {} in a container or barter list - a favourite cannot be sold or handed over", inventory::NameOf(item));
+						if (settings::Get().blockFavouriteDropSell) {
+							g_swallowA = true;
+							logger::info("pad: A on {} in a container or barter list - a favourite cannot be sold or handed over", inventory::NameOf(item));
+						} else {
+							wheels::NoteLeaving(item);   // sold or handed over: it leaves the wheel when none is carried
+						}
 					}
 				}
 				// ---- gameplay ----
@@ -710,7 +723,7 @@ namespace pad
 					g_centreStick = kPulseReads * 2;
 					out &= ~wheelBtn;
 					logger::info("pad: B on the wheel - closed without using a slot");
-				} else if (quickkeys::RadialOpen()) {
+				} else if (quickkeys::RadialOpen() && !g_leftToGame) {
 					SnapToFilled(a_pad);
 					RestSnap(a_pad, now);
 					const int slot = PointedKey();
@@ -782,13 +795,23 @@ namespace pad
 					g_swallowX = false;
 				}
 			}
+			if (g_leftToGame && !quickkeys::RadialOpen()) {
+				g_leftToGame = false;
+			}
 			if (g_forceClose) {
 				if (!quickkeys::RadialOpen()) {
 					g_forceClose = false;
 					g_bPulse = 0;
 				} else if (GetTickCount64() >= g_forceCloseAt && g_bPulse == 0) {
-					g_bPulse = kPulseReads;
-					logger::info("pad: the radial is still open 400 ms after a use on the Equipment wheel - closed with B, so the item is used");
+					if (++g_forceTries > 2) {
+						g_forceClose = false;   // the game keeps it open (a message waits for A): left to the player
+						g_leftToGame = true;
+						logger::info("pad: the radial stays open after {} B presses - left as it is", g_forceTries - 1);
+					} else {
+						g_bPulse = kPulseReads;
+						g_forceCloseAt = GetTickCount64() + 400;
+						logger::info("pad: the radial is still open 400 ms after a use on the Equipment wheel - closed with B, so the item is used");
+					}
 				}
 			}
 			if (g_bPulse > 0) {
@@ -798,6 +821,7 @@ namespace pad
 			if (g_closingMagic) {
 				if (!quickkeys::RadialOpen()) {
 					g_closingMagic = false;
+					wheels::ReleaseKey();
 					quickkeys::RestorePointer("the radial closed");   // the selector arrow back for the next opening
 				} else {
 					a_pad.sThumbRX = 0;

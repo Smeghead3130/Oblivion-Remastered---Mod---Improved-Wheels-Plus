@@ -22,6 +22,18 @@ namespace inventory
 	std::string NameOf(std::uint32_t a_formID);
 	std::uint32_t FindByName(const std::string& a_name);   // a carried item whose full name (a "LOC_FN_" key, or a custom name) matches
 
+	// carried items whose full name is a placeholder for a name the player typed ("UI_UserInputText_..."): their id, count and weight
+	struct Carried
+	{
+		std::uint32_t id = 0;
+		int           count = 0;
+		float         weight = 0.0f;
+	};
+	std::vector<Carried> CarriedWithTypedNames();
+
+	int           PositionOf(std::uint32_t a_formID);   // where the item sits in the player's item list (-1 = not carried)
+	std::uint32_t AtPosition(int a_position);          // the item at that place of the list (0 = none)
+
 	void ClearKey(std::uint32_t a_formID);            // takes every quick key off that item
 	void ClearSlot(int a_key);                        // takes quick key N off whichever item has it
 	bool SetKey(std::uint32_t a_formID, int a_key);   // puts quick key N on that item (and off any other item)

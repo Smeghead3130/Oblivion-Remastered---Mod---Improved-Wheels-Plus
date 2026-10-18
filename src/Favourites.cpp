@@ -115,7 +115,7 @@ namespace favourites
 		void OnButton(UE::UObject* a_obj, UE::UFunction* a_fn, void*);
 
 		// the column, added once to a row
-		bool Build(UE::UObject* a_row, Column& a_col, const char* a_horizontal)
+		bool Build(UE::UObject* a_row, Column& a_col, const char* a_horizontal, bool a_magic)
 		{
 			static auto* overlayClass = ui::Class(L"/Script/UMG.Overlay");
 			auto* horizontal = Prop(a_row, a_horizontal);
@@ -130,11 +130,57 @@ namespace favourites
 			}
 			const std::wstring n = std::to_wstring(++g_built);
 			auto* overlay = UE::NewObject<UE::UObject>(tree, overlayClass, UE::FName((L"IwmFavourite" + n).c_str()));
-			auto* slot = overlay ? Add(horizontal, L"AddChildToHorizontalBox", overlay) : nullptr;
+			// An inventory row's star sits in the margin before the item's icon (the old column at the row's right edge stood under the sort
+			// headers and read as a sorted column). The row's widgets lie on a canvas (inv_entry_panel: the focus box, the list background and the
+			// row's horizontal box), so the star is a canvas child of its own - anchored to the row's left edge, centred on its height - and the
+			// row's columns stay where the headers are. bFavouriteStarAtLeft=0 keeps the old column; iFavouriteStarX is measured from where the row's content starts.
+			const int    left = settings::Get().starX;
+			bool         onCanvas = false;
+			UE::UObject* slot = nullptr;
+			if (settings::Get().starAtLeft && overlay) {
+				const char* canvasName = a_magic ? "Magic_entry_panel" : "inv_entry_panel";
+				auto*       canvas = Prop(a_row, canvasName);
+				if (!canvas) canvas = ui::FindInTree(a_row, canvasName);
+				slot = canvas ? Add(canvas, L"AddChildToCanvas", overlay) : nullptr;
+				if (slot) {
+					const double anchors[4] = { 0.0, 0.5, 0.0, 0.5 };   // minimum (x, y), maximum (x, y): the left edge, mid-height
+					ui::CallFirst(slot, L"SetAnchors", anchors, sizeof(anchors));
+					ui::Vec2(slot, L"SetAlignment", 0.0, 0.5);
+					ui::Vec2(slot, L"SetPosition", static_cast<double>(left), 0.0);
+					ui::Vec2(slot, L"SetSize", kStarW, kStarH);
+					const std::uint8_t noAuto = 0;
+					ui::CallFirst(slot, L"SetAutoSize", &noAuto, sizeof(noAuto));
+					onCanvas = true;
+					// The row's own bounds start at its icon, and anything outside them is clipped: the row's content (icon, name, columns) is moved
+					// right by iFavouriteStarSpace - a left padding on its first child, once (read first: a row that is built again keeps it) - and the
+					// star sits in the room that makes.
+					const float space = static_cast<float>(settings::Get().starSpace);
+					const char* firstName = a_magic ? "Spacer_97" : "inv_entry_icon_overlay";   // the first child of the row's box
+					auto*       first = Prop(a_row, firstName);
+					if (!first) first = ui::FindInTree(a_row, firstName);
+					auto* firstSlot = first ? Prop(first, "Slot") : nullptr;
+					const auto padOff = firstSlot ? reflect::Offset(reinterpret_cast<UE::UStruct*>(firstSlot->GetClass()), "Padding") : -1;
+					if (space > 0.0f && padOff >= 0) {
+						float* m = reinterpret_cast<float*>(reinterpret_cast<std::uint8_t*>(firstSlot) + padOff);   // left, top, right, bottom
+						if (m[0] < space - 0.5f) {
+							const float pad[4] = { space, m[1], m[2], m[3] };
+							ui::CallFirst(firstSlot, L"SetPadding", pad, sizeof(pad));
+						}
+					}
+				}
+				static bool logged = false;
+				if (!logged) {
+					logged = true;
+					logger::info("favourites: the inventory star is placed {} px from the row's left edge ({})", left, onCanvas ? "on the row's canvas" : "the row has no canvas - it stays at the right");
+				}
+			}
+			if (!slot) slot = overlay ? Add(horizontal, L"AddChildToHorizontalBox", overlay) : nullptr;
 			if (!slot) return false;
-			Align(slot, 2, 2);
-			const float pad[4] = { 10.0f, 0.0f, 6.0f, 0.0f };   // left, top, right, bottom
-			ui::CallFirst(slot, L"SetPadding", pad, sizeof(pad));
+			if (!onCanvas) {
+				Align(slot, 2, 2);
+				const float pad[4] = { 10.0f, 0.0f, 6.0f, 0.0f };   // left, top, right, bottom
+				ui::CallFirst(slot, L"SetPadding", pad, sizeof(pad));
+			}
 
 			auto* fillTex = FillTexture();
 			auto* fill = StarImage(tree, overlay, L"IwmFavouriteFill" + n, fillTex ? fillTex : ui::Load(L"/Game/Art/UI/Common/T_UI_star_D.T_UI_star_D"));
@@ -173,10 +219,10 @@ namespace favourites
 
 		// A row mid-construction or mid-destruction can hold garbage widget pointers: an access violation while its column is
 		// read or built skips that row (built again on a later tick) instead of ending the game.
-		bool BuildGuarded(UE::UObject* a_row, Column& a_col, const char* a_horizontal, bool* a_faulted)
+		bool BuildGuarded(UE::UObject* a_row, Column& a_col, const char* a_horizontal, bool a_magic, bool* a_faulted)
 		{
 			__try {
-				return Build(a_row, a_col, a_horizontal);
+				return Build(a_row, a_col, a_horizontal, a_magic);
 			} __except (GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH) {
 				*a_faulted = true;
 				return false;
@@ -293,7 +339,7 @@ namespace favourites
 				col = {};
 				col.magic = magic;
 				bool faulted = false;
-				if (!BuildGuarded(row, col, magic ? "Magic_entry_horizontal" : "inv_entry_horizontal", &faulted)) {
+				if (!BuildGuarded(row, col, magic ? "Magic_entry_horizontal" : "inv_entry_horizontal", magic, &faulted)) {
 					if (faulted) {
 						col = {};
 						static bool warned = false;

@@ -35,6 +35,7 @@ namespace wheels
 	Wheel Active();                            // the wheel the HUD radial shows
 
 	void Favourite(menus::Menu a_menu);        // Y in the inventory / magic menu: the highlighted item or spell on/off its wheel
+	void NoteLeaving(std::uint32_t a_formID);   // a favourite is being dropped or sold: it leaves the wheels once none is carried
 	bool IsFavourite(std::uint32_t a_formID);  // on the Equipment or Ammo wheel - such an item cannot be dropped, sold or handed over
 	// every item on the Equipment or Ammo wheel, and a count that moves whenever any wheel changes (the favourites column)
 	std::unordered_set<std::uint32_t> Favourites();
@@ -73,6 +74,10 @@ namespace wheels
 	void UseNow(int a_slot, const char* a_how);
 	std::string LastUse();                     // what the last RB / A use did (the iwm.pad state)
 	void UseMagic(int a_slot);
+	// While the radial closes on a Magic or Ammo slot, the game's own close would use the item on ITS key of that slot (a potion on
+	// the Equipment wheel's slot 3 as a spell of slot 3 was chosen): the key is taken off that item until the radial has closed.
+	void HoldKey(int a_slot);
+	void ReleaseKey();
 	void UseAmmo(int a_slot);                  // the radial closed on a slot of the Ammo view: those arrows go on                 // the radial closed on a slot of the Magic wheel: that spell becomes the one cast
 
 	// what the wheel's pictures show

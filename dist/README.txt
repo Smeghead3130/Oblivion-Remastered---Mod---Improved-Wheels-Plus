@@ -26,7 +26,9 @@ ADDED IN THIS BUILD
     (uAnimSpeedPercent), and where the ammo wheel opens (uPosition).
   * Wheels are kept per character, and anything a loaded save cannot have (a spell or item that character does not own) is taken off
     the wheel so nothing tries to use a form that is not there.
-  * The stick points only at slots that hold something (bPointFilledOnly, on): empty slots are skipped on the Equipment, Magic and Ammo wheels, as the Ammo
+  * Favourites can be dropped and sold (bBlockFavouriteDropSell, off); they leave the wheel once none is carried. 1 restores the original mod's block.
+  * Armour and clothing can be put on the Equipment wheel like any item (bArmourOnWheel, on; 0 keeps only shields, as the original mod).
+  * The stick points only at slots that hold something (bPointFilledOnly, off by default; 1 turns it on): empty slots are skipped on the Equipment, Magic and Ammo wheels, as the Ammo
     shortcut always did.
   * bChooseOnClose (off): closing the wheel by letting go of its button, or pressing it again, uses the slot the stick points at, on whichever wheel is up -
     point and close, no A or RB needed. B still closes without using anything.

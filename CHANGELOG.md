@@ -5,8 +5,20 @@ in `git log`. A version number is issued by the version gate only once a build i
 
 ## 1.1.3 - 2026-10-18 - Improved Wheel - Keyboard and Better Controller Support
 
+### Added
+- INI `[Wheel] bArmourOnWheel` (1 by default): armour and clothing can be assigned to the Equipment wheel like any item (choosing one puts it on, choosing it again takes it off). 0 keeps the original rule: only shields.
+
+### Changed
+- `bPointFilledOnly` is now 0 by default: the stick points at any slot, filled or not (1 keeps the 1.1.2 behaviour of skipping empty slots).
+- The favourite star of the Inventory and of the Magic menu moved to the margin before each row's icon (`[Wheel] bFavouriteStarAtLeft`, and `iFavouriteStarX` and `iFavouriteStarSpace` for its place and the room it takes; 0 keeps the old column at the right edge, which stood under the sort headers). The rows' columns no longer shift.
+- Favourites can be dropped, sold or handed over (`[Wheel] bBlockFavouriteDropSell`, 0 by default; 1 restores the original mod's block). A dropped or sold item leaves the wheels once none is carried.
+
 ### Fixed
-- The wheels no longer interfere: choosing a spell or arrows on the Magic or Ammo wheel could use a potion that sat on the same slot of the game's own wheel (the game used its pointed key as the radial closed). The game's own pointed key is now cleared on every close - Magic, Ammo, Equipment, B and a close on nothing - and each wheel uses only what it chose itself.
+- Potions, enchanted gear and other items the player named got no white star, and some no icon on the wheel: their rows could not be matched to the item. A row is now matched by its typed name, then by its weight and count, and rows that still look alike are paired with the items in list order, so a favourite lights only its own row (items with the same name, weight and count cannot be told apart by their numbers and are paired in list order).
+- When the item a slot shows is used up (the last potion of a stack) or gone, the slot moves on to its next entry instead of showing -/5.
+- Choosing a spell on the Magic wheel now uses the game's own spell selection, as the Magic menu does: the first cast has the right animation and sound (it had the previous spell's animation and no sound).
+- The Magic wheel's icon reading no longer crashes the game when a spell is given a slot while the Magic menu rebuilds its list.
+- The wheels no longer interfere: choosing a spell or arrows on the Magic or Ammo wheel could use a potion that sat on the same slot of the game's own wheel (the game used its pointed key as the radial closed). The game's own pointed key is now cleared on every close - Magic, Ammo, Equipment, B and a close on nothing - and each wheel uses only what it chose itself. The game re-points its own wheel within a frame of every close, so the quick key of the pointed slot is also taken off its item while the radial closes on a spell or arrows, and put back once it has closed.
 
 ## 1.1.2 - 2026-10-18 - Improved Wheel - Keyboard and Better Controller Support
 

@@ -9,7 +9,12 @@ namespace settings
 	{
 		int  logLevel = 3;        // [Log] uLogLevel: 0 trace, 1 debug, 2 info, 3 warn (the default: warnings and errors only), 4 error
 		int  entriesPerSlot = 5;  // [Wheel] uEntriesPerSlot: how many entries one slot of a wheel holds (the owner: five by default)
-		bool pointFilledOnly = true;   // [Wheel] bPointFilledOnly: the stick points only at slots that hold something (as the Ammo shortcut does)
+		bool pointFilledOnly = false;   // [Wheel] bPointFilledOnly: the stick points only at slots that hold something (as the Ammo shortcut does); off by default
+		bool blockFavouriteDropSell = false;   // [Wheel] bBlockFavouriteDropSell: a favourite cannot be dropped, sold or handed over (the original mod's rule; 0: it can, and leaves the wheel)
+		bool starAtLeft = true;   // [Wheel] bFavouriteStarAtLeft: the inventory's favourite star sits in the margin before the item's icon (0: the old place, a column at the row's right)
+		int  starX = 6;           // [Wheel] iFavouriteStarX: pixels from the row's left edge to the star's left edge
+		int  starSpace = 44;      // [Wheel] iFavouriteStarSpace: pixels the row's icon, name and columns are moved right to make room for the star
+		bool armourOnWheel = true;   // [Wheel] bArmourOnWheel: armour and clothing can be put on the Equipment wheel (0: only shields, as the original mod)
 		bool rememberWheel = true;   // [Wheel] bRememberWheel: the radial opens on the wheel it was left on (0: always on the Equipment wheel)
 		bool chooseOnClose = false;   // [Wheel] bChooseOnClose: closing the wheel (its button let go or pressed again) uses the pointed slot, as RB / A would
 		bool centreRestSnap = true;   // [Wheel] bCentreRestSnap: the right stick back at rest points at no slot
