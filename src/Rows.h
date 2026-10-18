@@ -36,6 +36,9 @@ namespace rows
 	std::string               InventoryRowKey(UE::UObject* a_row);
 	std::uint32_t             InventoryRowForm(UE::UObject* a_row);
 	bool                      TakeInventoryRowsChanged();
+	// where an inventory-list row sits: 0 the Inventory menu, 1 a container or barter menu's list of the player's own items, 2 a container or barter list of
+	// the other side (the container's or the merchant's items: no star there)
+	int                       InventoryRowSide(UE::UObject* a_row);
 	UE::UClass*               InventoryRowClass();
 	UE::UClass*               MagicRowClass();
 	// the same for the magic menu's rows (their spell: the player's spell of the row's name)

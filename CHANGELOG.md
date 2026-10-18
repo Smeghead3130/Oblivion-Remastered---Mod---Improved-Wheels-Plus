@@ -9,6 +9,9 @@ in `git log`. A version number is issued by the version gate only once a build i
 - INI `[Wheel] bStayOpenAfterUse` (0 by default): choosing a weapon, armour or clothing on the Equipment wheel (A, RB or a click) puts it on or takes it off and leaves the wheel open for the next choice; potions and other consumables still close it.
 - INI `[Wheel] bArmourOnWheel` (1 by default): armour and clothing can be assigned to the Equipment wheel like any item (choosing one puts it on, choosing it again takes it off). 0 keeps the original rule: only shields.
 
+### Added
+- The favourite stars also show on your own items in container and barter lists, so a favourite can be seen (and set) when selling or storing; the container's and the merchant's rows have none.
+
 ### Changed
 - `bPointFilledOnly` is now 0 by default: the stick points at any slot, filled or not (1 keeps the 1.1.2 behaviour of skipping empty slots).
 - The favourite star of the Inventory and of the Magic menu moved to the margin before each row's icon (`[Wheel] bFavouriteStarAtLeft`, and `iFavouriteStarX` and `iFavouriteStarSpace` for its place and the room it takes; 0 keeps the old column at the right edge, which stood under the sort headers). The rows' columns no longer shift.

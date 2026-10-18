@@ -541,6 +541,15 @@ namespace rows
 
 	std::uint32_t InventoryRowForm(UE::UObject* a_row) { return FormOfInventoryRow(a_row); }
 
+	int InventoryRowSide(UE::UObject* a_row)
+	{
+		void*       props = PropsOf(g_inventory, a_row);
+		const bool* inContainer = reflect::At<bool>(props, g_inventory.inContainer);
+		const bool* playerItem = reflect::At<bool>(props, g_inventory.playerItem);
+		if (!inContainer || !*inContainer) return 0;
+		return playerItem && *playerItem ? 1 : 2;
+	}
+
 	bool TakeInventoryRowsChanged() { return g_rowsChanged.exchange(false, std::memory_order_relaxed); }
 
 	UE::UClass* InventoryRowClass() { return g_inventory.properties >= 0 ? g_inventory.rowClass : nullptr; }

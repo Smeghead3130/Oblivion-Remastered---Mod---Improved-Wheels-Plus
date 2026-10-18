@@ -3,6 +3,7 @@
 #include "Inventory.h"
 #include "Menus.h"
 #include "PEHook.h"
+#include "QuickKeys.h"
 #include "Reflect.h"
 #include "Rows.h"
 #include "Settings.h"
@@ -38,6 +39,7 @@ namespace favourites
 		bool            g_watching = false;
 		std::string     g_status = "the inventory has not been open yet";
 		menus::Menu     g_lastMenu = menus::Menu::kNone;
+		bool            g_lastContainer = false;
 
 		// ours, from the plugin folder: a texture the engine imports from the PNG (KismetRenderingLibrary)
 		UE::UObject* FillTexture()
@@ -316,15 +318,20 @@ namespace favourites
 		// owner, 2026-09-30: "we need to add a star for favorites on the column in the magic menu"
 		const auto menu = menus::Active();
 		const bool magic = menu == menus::Menu::kMagic;
-		if (menu != menus::Menu::kInventory && !magic) {
+		// a container or barter menu (the game is in a menu, it is none of ours, and it is not the HUD radial): its list rows are the inventory's row widget,
+		// the player's own side gets stars too
+		const bool container = menu == menus::Menu::kNone && menus::AnyOpen() && !quickkeys::RadialOpen();
+		if (menu != menus::Menu::kInventory && !magic && !container) {
 			g_lastMenu = menu;
+			g_lastContainer = false;
 			return;
 		}
 		const ULONGLONG now = GetTickCount64();
 		if (now < g_next) return;
 		g_next = now + 100;
-		const bool menuChanged = menu != g_lastMenu;
+		const bool menuChanged = menu != g_lastMenu || container != g_lastContainer;
 		g_lastMenu = menu;
+		g_lastContainer = container;
 		const bool rowsChanged = magic ? rows::TakeMagicRowsChanged() : rows::TakeInventoryRowsChanged();
 		const auto generation = wheels::Generation();
 		if (!menuChanged && !rowsChanged && generation == g_drawnGeneration) return;   // nothing moved: nothing to do
@@ -334,6 +341,18 @@ namespace favourites
 		const auto favs = magic ? wheels::MagicFavourites() : wheels::Favourites();
 		int drawn = 0, built = 0;
 		for (auto* row : live) {
+			if (!magic) {
+				// the other side of a container or barter list (the container's or the merchant's items) gets no star; a row of the Inventory menu left over
+				// while a container is open, or the player's side of the container, is as usual
+				const int side = rows::InventoryRowSide(row);
+				if (side == 2) {
+					if (const auto it = g_columns.find(row); it != g_columns.end() && it->second.rowSlot == row->internalIndex && it->second.shown != 2) {
+						ui::Visible(reflect::Get(it->second.overlay), false);
+						it->second.shown = 2;
+					}
+					continue;
+				}
+			}
 			Column& col = g_columns[row];
 			if (col.rowSlot != row->internalIndex || !reflect::Get(col.overlay)) {
 				col = {};
@@ -374,7 +393,7 @@ namespace favourites
 		}
 		if (built || drawn) {
 			g_status = std::format("{} rows with a column ({} built now in the {}), {} stars redrawn, {} clicks so far", g_columns.size(), built,
-				magic ? "magic menu" : "inventory", drawn, g_clicks);
+				magic ? "magic menu" : container ? "container or barter menu" : "inventory", drawn, g_clicks);
 			logger::debug("favourites: {}", g_status);
 		}
 	}
