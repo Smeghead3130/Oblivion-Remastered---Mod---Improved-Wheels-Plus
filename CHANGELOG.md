@@ -7,10 +7,8 @@ in `git log`. A version number is issued by the version gate only once a build i
 
 ### Added
 - An item you dropped, sold or stored leaves the wheels whichever way you did it, mouse and real keyboard keys included (equipment and ammo at once, potions and other consumables in container and barter menus).
-- INI `[Wheel] bStayOpenAfterUse` (0 by default): choosing a weapon, armour or clothing on the Equipment wheel (A, RB or a click) puts it on or takes it off and leaves the wheel open for the next choice; potions and other consumables still close it.
+- INI `[Wheel] bStayOpenAfterUse` (0 by default): choosing an item on the Equipment wheel (A, RB or a click) puts it on or takes it off and leaves the wheel open for the next choice; potions, poisons and ingredients too (a poison's question is answered without choosing again).
 - INI `[Wheel] bArmourOnWheel` (1 by default): armour and clothing can be assigned to the Equipment wheel like any item (choosing one puts it on, choosing it again takes it off). 0 keeps the original rule: only shields.
-
-### Added
 - The favourite stars also show on your own items in container and barter lists, so a favourite can be seen (and set) when selling or storing; the container's and the merchant's rows have none.
 
 ### Changed
