@@ -6,6 +6,7 @@ in `git log`. A version number is issued by the version gate only once a build i
 ## 1.1.3 - 2026-10-18 - Improved Wheel - Keyboard and Better Controller Support
 
 ### Added
+- INI `[Wheel] bStayOpenAfterUse` (0 by default): choosing a weapon, armour or clothing on the Equipment wheel (A, RB or a click) puts it on or takes it off and leaves the wheel open for the next choice; potions and other consumables still close it.
 - INI `[Wheel] bArmourOnWheel` (1 by default): armour and clothing can be assigned to the Equipment wheel like any item (choosing one puts it on, choosing it again takes it off). 0 keeps the original rule: only shields.
 
 ### Changed

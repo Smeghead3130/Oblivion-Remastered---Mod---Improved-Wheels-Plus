@@ -14,6 +14,7 @@ namespace settings
 		bool starAtLeft = true;   // [Wheel] bFavouriteStarAtLeft: the inventory's favourite star sits in the margin before the item's icon (0: the old place, a column at the row's right)
 		int  starX = 6;           // [Wheel] iFavouriteStarX: pixels from the row's left edge to the star's left edge
 		int  starSpace = 44;      // [Wheel] iFavouriteStarSpace: pixels the row's icon, name and columns are moved right to make room for the star
+		bool stayOpenAfterUse = false;   // [Wheel] bStayOpenAfterUse: choosing a weapon or armour on the Equipment wheel (A, RB, click) leaves the wheel open for the next one
 		bool armourOnWheel = true;   // [Wheel] bArmourOnWheel: armour and clothing can be put on the Equipment wheel (0: only shields, as the original mod)
 		bool rememberWheel = true;   // [Wheel] bRememberWheel: the radial opens on the wheel it was left on (0: always on the Equipment wheel)
 		bool chooseOnClose = false;   // [Wheel] bChooseOnClose: closing the wheel (its button let go or pressed again) uses the pointed slot, as RB / A would

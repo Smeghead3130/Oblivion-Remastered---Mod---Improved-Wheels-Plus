@@ -27,6 +27,7 @@ ADDED IN THIS BUILD
   * Wheels are kept per character, and anything a loaded save cannot have (a spell or item that character does not own) is taken off
     the wheel so nothing tries to use a form that is not there.
   * Favourites can be dropped and sold (bBlockFavouriteDropSell, off); they leave the wheel once none is carried. 1 restores the original mod's block.
+  * bStayOpenAfterUse (off by default): weapons and armour chosen on the Equipment wheel leave the wheel open, so several can be changed in one opening.
   * Armour and clothing can be put on the Equipment wheel like any item (bArmourOnWheel, on; 0 keeps only shields, as the original mod).
   * The stick points only at slots that hold something (bPointFilledOnly, off by default; 1 turns it on): empty slots are skipped on the Equipment, Magic and Ammo wheels, as the Ammo
     shortcut always did.

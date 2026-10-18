@@ -113,7 +113,6 @@ namespace pad
 		bool              g_downInMenu = false;     // a menu (not the wheel - it only opens after the press) was up at the press
 		Clock::time_point g_pendingSince{};
 		bool              g_sawRadialOpen = false;  // the radial's open edge, for the press-to-shown time in the log
-
 		int  g_pulseDown = 0;   // reads left of a replayed D-pad down tap
 		bool g_swallowB = false;   // B was used to back out of the panel / radial: the game never sees it, until let go
 		int  g_centreStick = 0;    // reads left with the right stick held centred (a cancelled radial must not point anywhere)
@@ -744,30 +743,44 @@ namespace pad
 					// A is ours on both wheels now (the game never sees it): on the inventory wheel it uses the pointed slot
 					// exactly as RB does (2026-10-01: "make RB (and A on the inventory wheel) use the pointed key")
 					if (pressed & XINPUT_GAMEPAD_A) {
+						bool stayOpen = false;
 						if (wheels::Active() == wheels::Wheel::kMagic) {
 							CloseOnMagic(slot);
 							logger::info("pad: A on the Magic wheel - slot {} chosen, the wheel closes", slot + 1);
 						} else if (wheels::Active() == wheels::Wheel::kAmmo) {
 							CloseOnAmmo(slot);
+						} else if (wheels::StaysOpenAfterUse(slot) && !magicwheel::IsSpellKey(slot)) {
+							wheels::UseNow(slot, keyboard::ScriptRunning() ? "click" : "A", true);   // bStayOpenAfterUse: the item is put on or taken off and the wheel stays up
+							stayOpen = true;
 						} else {
 							CloseOnEquipment(slot, keyboard::ScriptRunning() ? "click" : "A");   // the mouse click is a script of the keyboard's
 						}
 						g_swallowA = true;
-						g_latched = false;
-						if (raw & wheelBtn) { g_suppressDown = true; }
-						out &= ~(wheelBtn | XINPUT_GAMEPAD_A);   // let go now: the wheel closes
+						if (stayOpen) {
+							out &= ~XINPUT_GAMEPAD_A;   // the game never sees A; the wheel button is left as it is
+						} else {
+							g_latched = false;
+							if (raw & wheelBtn) { g_suppressDown = true; }
+							out &= ~(wheelBtn | XINPUT_GAMEPAD_A);   // let go now: the wheel closes
+						}
 					}
 					if (pressed & XINPUT_GAMEPAD_RIGHT_SHOULDER) {
+						bool stayOpenRB = false;
 						if (wheels::Active() == wheels::Wheel::kMagic) {
 							CloseOnMagic(slot);
 						} else if (wheels::Active() == wheels::Wheel::kAmmo) {
 							CloseOnAmmo(slot);
+						} else if (wheels::StaysOpenAfterUse(slot) && !magicwheel::IsSpellKey(slot)) {
+							wheels::UseNow(slot, "RB", true);   // bStayOpenAfterUse: the wheel stays up
+							stayOpenRB = true;
 						} else {
 							CloseOnEquipment(slot, "RB");
 						}
-						g_latched = false;
-						if (raw & wheelBtn) { g_suppressDown = true; }
-						out &= ~wheelBtn;   // let go now: the wheel closes (on nothing - the use follows)
+						if (!stayOpenRB) {
+							g_latched = false;
+							if (raw & wheelBtn) { g_suppressDown = true; }
+							out &= ~wheelBtn;   // let go now: the wheel closes (on nothing - the use follows)
+						}
 					}
 					a_pad.bLeftTrigger = 0;
 					a_pad.bRightTrigger = 0;

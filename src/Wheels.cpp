@@ -1565,7 +1565,7 @@ logger::info("wheels: the {} wheel's own button - it is the active wheel", Name(
 		}
 	}
 
-	void UseNow(int a_slot, const char* a_how)
+	void UseNow(int a_slot, const char* a_how, bool a_stayOpen)
 	{
 		if (a_slot < 0) {
 			logger::info("wheels: USE ({}) with no slot pointed - nothing used", a_how);
@@ -1603,7 +1603,7 @@ logger::info("wheels: the {} wheel's own button - it is the active wheel", Name(
 				return;
 			}
 			g_use.direct = true;
-			if (!Equippable(id)) {
+			if (!Equippable(id) && !a_stayOpen) {
 				// the game's own answer to a use it refuses ('You cannot drink any more potions right now') is a message that needs A; over a
 				// radial that is still open it kept the radial up and A never reached the message - so it is used once the radial is closed
 				g_use.waitClose = true;
@@ -1623,6 +1623,15 @@ logger::info("wheels: the {} wheel's own button - it is the active wheel", Name(
 	}
 
 	std::string LastUse() { return g_lastUse; }
+
+	bool StaysOpenAfterUse(int a_slot)
+	{
+		if (!settings::Get().stayOpenAfterUse || a_slot < 0 || a_slot >= inventory::kSlots || !EnsureLoaded()) {
+			return false;
+		}
+		const auto id = inventory::Keys()[static_cast<std::size_t>(a_slot)];
+		return id && (Equippable(id) || Consumable(id));   // weapons, armour, clothing, lights and potions, poisons, ingredients (the game's refusal message over an open radial may need a click)
+	}
 
 	void HoldKey(int a_slot)
 	{
