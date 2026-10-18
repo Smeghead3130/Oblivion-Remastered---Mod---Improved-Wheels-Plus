@@ -281,6 +281,11 @@ namespace pad
 		{
 			quickkeys::ClearPointer();   // every wheel is its own: the game's close uses nothing on any of them
 			g_closingMagic = true;   // held clear and centred until the radial has closed
+			if (a_slot < 0 || !inventory::Keys()[static_cast<std::size_t>(a_slot)] || magicwheel::IsSpellKey(a_slot)) {
+				// nothing to use: no B fallback - its B reached the game as crouch after a click on an empty slot of a wheel opened with R (2026-10-18)
+				if (!magicwheel::IsSpellKey(a_slot)) wheels::UseNow(a_slot, a_how);   // logs "holds nothing"
+				return;
+			}
 			g_forceClose = true;     // a wheel opened with a tap and clicked with the mouse did not close by itself: a potion was never used
 			g_forceCloseAt = GetTickCount64() + 400;
 			g_forceTries = 0;
@@ -682,6 +687,10 @@ namespace pad
 				if (radialOpen && !g_sawRadialOpen) {
 					logger::info("pad: the wheel showed {} ms after the wheel button went down", sinceDown());
 				}
+				if (!radialOpen && g_sawRadialOpen && g_latched) {
+					g_latched = false;   // the game closed a latched wheel by itself (a message box): let go, or the held button reopened it again and again
+					logger::info("pad: the latched wheel was closed by the game - the wheel button is let go");
+				}
 				g_sawRadialOpen = radialOpen;
 				if (g_pendingLatch) {
 					if (radialOpen) {
@@ -716,10 +725,10 @@ namespace pad
 					if (g_suppressDown) {
 						g_suppressDown = false;
 						logger::debug("pad: wheel button up after {} ms - already handled", sinceDown());
-					} else if (now - g_gameDownAt < kHoldThreshold && radialOpen) {
+					} else if (now - g_gameDownAt < kHoldThreshold && radialOpen && !keyboard::UseScriptRecent()) {
 						g_latched = true;        // a tap: the wheel stays open until the next press
 						logger::info("pad: wheel button tapped ({} ms) - the wheel stays open until the next press", sinceDown());
-					} else if (now - g_gameDownAt < kHoldThreshold && !g_downInMenu) {
+					} else if (now - g_gameDownAt < kHoldThreshold && !g_downInMenu && !keyboard::UseScriptRecent()) {
 						g_pendingLatch = true;   // a tap let go before the wheel showed: keep it held for the game until it does
 						g_pendingSince = now;
 						logger::info("pad: wheel button tapped ({} ms) before the wheel showed - held for the game until it opens", sinceDown());
@@ -779,6 +788,8 @@ namespace pad
 							logger::info("pad: A on the Magic wheel - slot {} chosen, the wheel closes", slot + 1);
 						} else if (wheels::Active() == wheels::Wheel::kAmmo) {
 							CloseOnAmmo(slot);
+						} else if (settings::Get().stayOpenAfterUse && (slot < 0 || !inventory::Keys()[static_cast<std::size_t>(slot)])) {
+							stayOpen = true;   // A or a click on an empty slot of a wheel that stays open: nothing happens, it stays open
 						} else if (wheels::StaysOpenAfterUse(slot) && !magicwheel::IsSpellKey(slot)) {
 							wheels::UseNow(slot, keyboard::ScriptRunning() ? "click" : "A", true);   // bStayOpenAfterUse: the item is put on or taken off and the wheel stays up
 							stayOpen = true;
@@ -801,6 +812,8 @@ namespace pad
 							CloseOnMagic(slot);
 						} else if (wheels::Active() == wheels::Wheel::kAmmo) {
 							CloseOnAmmo(slot);
+						} else if (settings::Get().stayOpenAfterUse && (slot < 0 || !inventory::Keys()[static_cast<std::size_t>(slot)])) {
+							stayOpenRB = true;   // RB on an empty slot of a wheel that stays open: nothing happens
 						} else if (wheels::StaysOpenAfterUse(slot) && !magicwheel::IsSpellKey(slot)) {
 							wheels::UseNow(slot, "RB", true);   // bStayOpenAfterUse: the wheel stays up
 							stayOpenRB = true;

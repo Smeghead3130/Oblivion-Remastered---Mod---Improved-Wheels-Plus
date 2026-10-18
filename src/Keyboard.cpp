@@ -174,8 +174,11 @@ namespace keyboard
 			g_script.at = GetTickCount64();
 		}
 
+		ULONGLONG g_useScriptEnded = 0;
+
 		void End(const char* a_why)
 		{
+			if (g_script.kind == Script::kUse) g_useScriptEnded = GetTickCount64();
 			logger::info("keyboard: slot key script ended ({})", a_why);
 			g_script.kind = Script::kNone;
 		}
@@ -361,8 +364,9 @@ namespace keyboard
 			const auto menu = menus::Active();
 			if (menu == menus::Menu::kInventory || menu == menus::Menu::kMagic) {
 				if (SearchBoxFocused()) continue;
-				g_script = { Script::kAssign, i, 0, false, GetTickCount64() };
-				logger::info("keyboard: slot key {} in the {} - assign to slot {} through the panel", i + 1, menus::Name(menu), i + 1);
+				// directly, without playing L3 / the stick / A: a played controller press switched the game's button pictures to the controller's
+				logger::info("keyboard: slot key {} in the {} - assigned to slot {} directly", i + 1, menus::Name(menu), i + 1);
+				wheels::AssignHighlighted(menu, i);
 			} else if (menu == menus::Menu::kNone && (!menus::AnyOpen() || quickkeys::RadialOpen())) {
 				g_script = { Script::kUse, i, 0, false, GetTickCount64() };
 				logger::info("keyboard: slot key {} - use slot {}", i + 1, i + 1);
@@ -409,6 +413,11 @@ namespace keyboard
 		const ULONGLONG t = GetTickCount64();
 		if (any) g_lastActive = t;
 		return any || t - g_lastActive < 400;
+	}
+
+	bool UseScriptRecent()
+	{
+		return g_script.kind == Script::kUse || GetTickCount64() - g_useScriptEnded < 200;
 	}
 
 	bool ScriptRunning()

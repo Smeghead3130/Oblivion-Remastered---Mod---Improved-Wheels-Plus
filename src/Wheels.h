@@ -34,7 +34,10 @@ namespace wheels
 	const char* Name(Wheel a_wheel);
 	Wheel Active();                            // the wheel the HUD radial shows
 
-	void Favourite(menus::Menu a_menu);        // Y in the inventory / magic menu: the highlighted item or spell on/off its wheel
+	void Favourite(menus::Menu a_menu);
+	// a keyboard slot key in the Inventory / Magic menu: the highlighted item or spell to slot N of its wheel directly (pressed again on an item the slot
+	// already holds: it comes off), with no controller input played - the game switched its button pictures to the controller's for the played L3 / stick / A
+	void AssignHighlighted(menus::Menu a_menu, int a_slot);        // Y in the inventory / magic menu: the highlighted item or spell on/off its wheel
 	void NoteLeaving(std::uint32_t a_formID);   // a favourite is being dropped or sold: it leaves the wheels once none is carried
 	bool IsFavourite(std::uint32_t a_formID);  // on the Equipment or Ammo wheel - such an item cannot be dropped, sold or handed over
 	// every item on the Equipment or Ammo wheel, and a count that moves whenever any wheel changes (the favourites column)

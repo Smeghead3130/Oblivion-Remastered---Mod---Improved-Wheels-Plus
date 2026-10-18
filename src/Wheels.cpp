@@ -1437,6 +1437,44 @@ namespace wheels
 		return out;
 	}
 
+	void AssignHighlighted(menus::Menu a_menu, int a_slot)
+	{
+		if (a_slot < 0 || a_slot >= inventory::kSlots || !EnsureLoaded()) {
+			return;
+		}
+		std::uint32_t id = 0;
+		int           wheel = -1;
+		if (a_menu == menus::Menu::kMagic) {
+			id = rows::HighlightedSpell();
+			wheel = kMagic;
+		} else if (a_menu == menus::Menu::kInventory) {
+			id = rows::HighlightedItem();
+			wheel = id && IsAmmo(id) ? kAmmo : kEquip;
+		}
+		if (!id || wheel < 0) {
+			logger::info("wheels: slot key {} in the {} - no item or spell highlighted", a_slot + 1, menus::Name(a_menu));
+			return;
+		}
+		if (wheel == kEquip && !AllowedOnEquipment(id)) {
+			ToggleFavourite(kEquip, id);   // armour with bArmourOnWheel=0: a favourite, never on the wheel
+			return;
+		}
+		const auto before = inventory::Keys();
+		Slot&      slot = g_wheels[wheel][a_slot];
+		if (const int idx = IndexOf(slot, id); idx >= 0) {
+			RemoveAt(wheel, a_slot, idx, std::format("slot key {} pressed again on it", a_slot + 1));
+		} else {
+			RemoveFromOtherSlots(wheel, a_slot, id);   // an item is on one slot
+			if (static_cast<int>(slot.entries.size()) >= Cap()) {
+				RemoveAt(wheel, a_slot, static_cast<int>(slot.entries.size()) - 1, std::format("slot {} is full - its last entry leaves for the new one", a_slot + 1));
+			}
+			AddTo(wheel, a_slot, id, "slot key");
+		}
+		Save();
+		PatchChanged(before);
+		Refresh();
+	}
+
 	void Favourite(menus::Menu a_menu)
 {
 		if (!EnsureLoaded()) {

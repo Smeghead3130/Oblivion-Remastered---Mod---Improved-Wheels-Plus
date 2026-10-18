@@ -72,6 +72,30 @@ namespace rows
 		// the typed text. Several items can share that text, and the row's InventoryIndex is only within about 2 of the item's place in the list, so the
 		// row's own numbers decide: of the carried items with that typed text, the one whose weight matches the row's Weight (and, when two match, whose
 		// count matches the row's Count).
+		// row InventoryIndex -> (the item's place in the list - the index, when it was seen), learned from rows whose item is known by its name key. The two
+		// orders differ by a place or two that is the same over a stretch of the list, so a neighbour's difference tells where a twin row's item sits exactly.
+		std::map<int, std::pair<int, ULONGLONG>> g_offsetAt;
+
+		void NoteOffset(int a_idx, std::uint32_t a_id)
+		{
+			if (a_idx < 0) return;
+			const int pos = inventory::PositionOf(a_id);
+			if (pos >= 0) g_offsetAt[a_idx] = { pos - a_idx, GetTickCount64() };
+		}
+
+		// the list place a row's item has, from the nearest fresh neighbour's difference (-1 when none is known)
+		int PredictedPosition(int a_idx)
+		{
+			const ULONGLONG now = GetTickCount64();
+			int             best = -1, bestDist = 1 << 30, offset = 0;
+			for (const auto& [i, v] : g_offsetAt) {
+				if (now - v.second > 15000) continue;   // the list changes (an item added or gone): only what was seen lately
+				const int d = std::abs(i - a_idx);
+				if (d < bestDist) bestDist = d, best = i, offset = v.first;
+			}
+			return best < 0 ? -1 : a_idx + offset;
+		}
+
 		std::uint32_t CustomItemOfRow(UE::UObject* a_row, void* a_props, const std::string& a_text)
 		{
 			const auto* weight = reflect::At<float>(a_props, g_inventory.weight);
@@ -91,6 +115,12 @@ namespace rows
 			}
 			if (cands.empty()) return 0;
 			if (cands.size() == 1) return cands.front().id;
+			// several: the one that sits where the row's neighbours say this row's item sits (does not depend on which twin rows are built now)
+			if (const int predicted = PredictedPosition(idx); predicted >= 0) {
+				for (const auto& c : cands) {
+					if (inventory::PositionOf(c.id) == predicted) return c.id;
+				}
+			}
 			// still several: the live rows that look just like this one take the candidates in order - rows by InventoryIndex, items by their place in the
 			// list (the two orders agree to within a place or two, so the order is the same even where the numbers are not)
 			std::vector<std::pair<int, UE::UObject*>> twins;   // InventoryIndex, row
@@ -139,6 +169,7 @@ namespace rows
 			const std::string key = KeyOfRow(g_inventory, a_row);
 			const std::string text = NameOfRow(g_inventory, a_row);
 			if (const auto id = inventory::FindByName(key.empty() ? text : key)) {
+				if (!key.empty()) NoteOffset(IndexOfRow(g_inventory, a_row), id);
 				return id;
 			}
 			return key.empty() && !text.empty() ? CustomItemOfRow(a_row, props, text) : 0u;
@@ -536,7 +567,12 @@ namespace rows
 	std::string InventoryRowKey(UE::UObject* a_row)
 	{
 		const std::string key = KeyOfRow(g_inventory, a_row);
-		return key.empty() ? NameOfRow(g_inventory, a_row) : key;
+		if (!key.empty()) return key;
+		// a typed name is shared by several items: the row's index, weight and count make the key tell them apart, so a row reused for a twin is looked up again
+		void*       props = PropsOf(g_inventory, a_row);
+		const auto* w = reflect::At<float>(props, g_inventory.weight);
+		const auto* k = reflect::At<std::int32_t>(props, g_inventory.count);
+		return std::format("{}#{}|{:.2f}|{}", NameOfRow(g_inventory, a_row), IndexOfRow(g_inventory, a_row), w ? *w : -1.0f, k ? *k : -1);
 	}
 
 	std::uint32_t InventoryRowForm(UE::UObject* a_row) { return FormOfInventoryRow(a_row); }
