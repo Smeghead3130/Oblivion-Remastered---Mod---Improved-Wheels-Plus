@@ -332,9 +332,20 @@ namespace pad
 		// The wheel closing by its button (let go after a hold, or pressed again after a tap): uses NOTHING by default; with INI [Wheel]
 		// bChooseOnClose=1 it uses the slot the stick points at, on whichever wheel is up - the stick alone chooses, as on the game's own wheel.
 		// B still backs out.
+		// The slot just used with the wheel staying open (bStayOpenAfterUse): letting go of the wheel button right after (the keyboard's slot-key script does,
+		// a mouse keeps pointing at it) must not use it again through bChooseOnClose - a weapon was put on and taken off, or a second potion drunk.
+		// Forgotten as soon as the pointer moves to another slot or the radial closes.
+		int g_stayUsedSlot = -1;
+
 		void CloseOnPointed(const char* a_how)
 		{
 			const int slot = settings::Get().chooseOnClose ? PointedKey() : -1;
+			if (slot >= 0 && slot == g_stayUsedSlot) {
+				g_stayUsedSlot = -1;
+				CloseOnNothing(a_how);
+				logger::info("pad: slot {} was used just before (the wheel stayed open) - the close uses it no more", slot + 1);
+				return;
+			}
 			if (slot < 0) {
 				CloseOnNothing(a_how);
 				return;
@@ -640,6 +651,18 @@ namespace pad
 			} else {
 				// ---- any other menu (a container or barter list): a favourite cannot be sold or handed over. The HUD radial
 				// is a Gamebryo menu too, so this checks for it first. ----
+				if (menus::AnyOpen() && !quickkeys::RadialOpen()) {
+					const WORD favButton = static_cast<WORD>(settings::Get().favouriteButton);
+					if (favButton && (pressed & favButton)) {
+						// the favourite button on the player's own row of a container or barter list: on or off the wheel, as in the Inventory (the star
+						// there was only clickable); the other side's rows (the container's, the merchant's) give no item, so nothing happens there
+						if (const auto own = rows::HighlightedPlayerItemInContainer()) {
+							out &= ~favButton;   // the game never sees it here
+							wheels::ToggleItem(own);
+							logger::info("pad: the favourite button on {} in a container or barter list - toggled", inventory::NameOf(own));
+						}
+					}
+				}
 				if (menus::AnyOpen() && !quickkeys::RadialOpen() && (pressed & XINPUT_GAMEPAD_A)) {
 					const auto item = rows::HighlightedPlayerItemInContainer();
 					if (wheels::IsFavourite(item)) {
@@ -726,6 +749,7 @@ namespace pad
 					SnapToFilled(a_pad);
 					RestSnap(a_pad, now);
 					const int slot = PointedKey();
+					if (g_stayUsedSlot >= 0 && slot != g_stayUsedSlot && slot >= 0) g_stayUsedSlot = -1;   // pointed elsewhere: a later close may use that one
 					out &= ~((XINPUT_GAMEPAD_DPAD_LEFT | XINPUT_GAMEPAD_DPAD_RIGHT | XINPUT_GAMEPAD_LEFT_SHOULDER | XINPUT_GAMEPAD_RIGHT_SHOULDER) & ~wheelBtn);   // never the wheel button itself
 					if (pressed & XINPUT_GAMEPAD_DPAD_LEFT) { wheels::SwitchWheel(-1); }
 					if (pressed & XINPUT_GAMEPAD_DPAD_RIGHT) { wheels::SwitchWheel(+1); }
@@ -742,7 +766,13 @@ namespace pad
 					// game's, and a key holding a spell still uses nothing.
 					// A is ours on both wheels now (the game never sees it): on the inventory wheel it uses the pointed slot
 					// exactly as RB does (2026-10-01: "make RB (and A on the inventory wheel) use the pointed key")
-					if (pressed & XINPUT_GAMEPAD_A) {
+					// a message of the game is up over the wheel (its question or its notice): A and RB answer it, they choose nothing - every answer was a
+					// new choice and brought the message back ("apply the poison?", "already poisoned", 2026-10-18)
+					const bool messageUp = (pressed & (XINPUT_GAMEPAD_A | XINPUT_GAMEPAD_RIGHT_SHOULDER)) && quickkeys::GameMessageUp();
+					if (messageUp) {
+						logger::info("pad: a message of the game is up over the wheel - A / RB answer it, nothing is chosen");
+					}
+					if ((pressed & XINPUT_GAMEPAD_A) && !messageUp) {
 						bool stayOpen = false;
 						if (wheels::Active() == wheels::Wheel::kMagic) {
 							CloseOnMagic(slot);
@@ -752,6 +782,7 @@ namespace pad
 						} else if (wheels::StaysOpenAfterUse(slot) && !magicwheel::IsSpellKey(slot)) {
 							wheels::UseNow(slot, keyboard::ScriptRunning() ? "click" : "A", true);   // bStayOpenAfterUse: the item is put on or taken off and the wheel stays up
 							stayOpen = true;
+							g_stayUsedSlot = slot;
 						} else {
 							CloseOnEquipment(slot, keyboard::ScriptRunning() ? "click" : "A");   // the mouse click is a script of the keyboard's
 						}
@@ -764,7 +795,7 @@ namespace pad
 							out &= ~(wheelBtn | XINPUT_GAMEPAD_A);   // let go now: the wheel closes
 						}
 					}
-					if (pressed & XINPUT_GAMEPAD_RIGHT_SHOULDER) {
+					if ((pressed & XINPUT_GAMEPAD_RIGHT_SHOULDER) && !messageUp) {
 						bool stayOpenRB = false;
 						if (wheels::Active() == wheels::Wheel::kMagic) {
 							CloseOnMagic(slot);
@@ -773,6 +804,7 @@ namespace pad
 						} else if (wheels::StaysOpenAfterUse(slot) && !magicwheel::IsSpellKey(slot)) {
 							wheels::UseNow(slot, "RB", true);   // bStayOpenAfterUse: the wheel stays up
 							stayOpenRB = true;
+							g_stayUsedSlot = slot;
 						} else {
 							CloseOnEquipment(slot, "RB");
 						}
@@ -821,15 +853,21 @@ namespace pad
 						g_leftToGame = true;
 						logger::info("pad: the radial stays open after {} B presses - left as it is", g_forceTries - 1);
 					} else {
-						g_bPulse = kPulseReads;
+						g_bPulse = 2;   // short: the game starts closing on the first read and gives the controls back at once, a longer B reached it as crouch (2026-10-18)
 						g_forceCloseAt = GetTickCount64() + 400;
 						logger::info("pad: the radial is still open 400 ms after a use on the Equipment wheel - closed with B, so the item is used");
 					}
 				}
 			}
 			if (g_bPulse > 0) {
-				out |= XINPUT_GAMEPAD_B;
-				--g_bPulse;
+				// only while the radial is still up: a B that arrives after it has closed is the game's crouch (B on a controller) - seen with the wheel opened
+				// by the game's own keyboard key (R), 2026-10-18
+				if (quickkeys::RadialOpen()) {
+					out |= XINPUT_GAMEPAD_B;
+					--g_bPulse;
+				} else {
+					g_bPulse = 0;
+				}
 			}
 			if (g_closingMagic) {
 				if (!quickkeys::RadialOpen()) {

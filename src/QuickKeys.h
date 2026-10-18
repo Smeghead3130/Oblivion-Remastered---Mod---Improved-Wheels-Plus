@@ -35,6 +35,9 @@ namespace quickkeys
 
 	bool RadialOpen();   // the HUD radial is showing
 	bool PanelOpen();    // a menu's assign panel is showing
+	// one of the game's message boxes is up (WBP_ModernMenu_Message: "You cannot drink any more potions", "apply the poison?", "already poisoned"...):
+	// a click or A then answers it and must not be taken as a choice on the wheel behind it. Looked up when a choice is about to be made, not every read.
+	bool GameMessageUp();
 	// any wheel widget's own visibility says shown (UWidget::IsVisible). The magic menu's panel reports no visibility
 	// change through ProcessEvent, so in the magic menu this is how its panel is known to be up. Game thread.
 	bool AnyWheelVisible();

@@ -2,6 +2,7 @@
 
 #include "Ammo.h"
 #include "Inventory.h"
+#include "Menus.h"
 #include "PEHook.h"
 #include "Reflect.h"
 #include "QuickKeys.h"
@@ -225,6 +226,22 @@ namespace wheels
 
 		int  NextEquipment(int a_slot, int a_from, int a_dir, std::string* a_skipped = nullptr);
 		void RemoveLeavers();
+		void RemoveGoneInMenus();
+		bool Consumable(std::uint32_t a_id);
+
+		// a poison (an alchemy item the game types as poison): the game asks whether to apply it to the weapon
+		bool Poison(std::uint32_t a_id)
+		{
+			auto* form = a_id ? RE::TESForm::LookupByID(a_id) : nullptr;
+			auto* alch = form && form->GetFormType() == RE::FormType::AlchemyItem ? form->As<RE::AlchemyItem>() : nullptr;
+			if (!alch) return false;
+			auto* item = static_cast<RE::MagicItem*>(alch);
+			if (item->GetSpellType() == RE::MagicSystem::SpellType::kPoison) return true;
+			// a poison the player made reads as a potion: every one of its effects is hostile (Oblivion's own rule for poisons)
+			int effects = 0;
+			for ([[maybe_unused]] auto* e : item->effectList) ++effects;
+			return effects > 0 && item->hostileCount >= effects;
+		}
 		void PatchEquipment(int a_slot);
 		void Refresh();
 
@@ -403,6 +420,7 @@ namespace wheels
 			// arrival as already "in the slot"
 			if (!AssignPending()) {
 				RemoveLeavers();
+				RemoveGoneInMenus();
 				Reconcile();
 			}
 			MigrateAmmo();
@@ -677,6 +695,52 @@ namespace wheels
 				PatchChanged(before);
 				Refresh();
 			}
+		}
+
+		// An item that was carried and is gone while a menu is open was dropped, sold or stored - by the mouse or a real keyboard key as well, which NoteLeaving
+		// (the pad's X and A) never sees. Equipment and ammo leave the wheels at once (nothing in a menu uses them up); a potion, poison or ingredient only in a
+		// container or barter menu, because the Inventory menu can drink it. Only items seen carried count: what a loaded save does not have is Sanitize's.
+		std::unordered_set<std::uint32_t> g_carriedSeen;
+		ULONGLONG                         g_goneCheckAt = 0;
+
+		void RemoveGoneInMenus()
+		{
+			const ULONGLONG now = GetTickCount64();
+			if (now < g_goneCheckAt) return;
+			g_goneCheckAt = now + 250;
+			if (!inventory::Ready()) return;
+			const bool inMenu = menus::AnyOpen() && !quickkeys::RadialOpen();
+			const bool barterOrContainer = inMenu && menus::Active() == menus::Menu::kNone;
+			std::vector<std::uint32_t> gone;
+			for (const int w : { static_cast<int>(kEquip), static_cast<int>(kAmmo), static_cast<int>(kFav) }) {
+				for (const Slot& slot : g_wheels[w]) {
+					for (const auto id : slot.entries) {
+						if (inventory::Has(id)) {
+							g_carriedSeen.insert(id);
+						} else if (inMenu && g_carriedSeen.count(id) && (!Consumable(id) || barterOrContainer) &&
+								   std::find(gone.begin(), gone.end(), id) == gone.end()) {
+							gone.push_back(id);
+						}
+					}
+				}
+			}
+			if (gone.empty()) return;
+			const auto before = inventory::Keys();
+			for (const auto id : gone) {
+				for (const int w : { static_cast<int>(kEquip), static_cast<int>(kAmmo), static_cast<int>(kFav) }) {
+					for (int s = 0; s < inventory::kSlots; ++s) {
+						for (int idx = IndexOf(g_wheels[w][s], id); idx >= 0; idx = IndexOf(g_wheels[w][s], id)) {
+							RemoveAt(w, s, idx, "gone while a menu was open (dropped, sold or stored)");
+						}
+					}
+				}
+				g_carriedSeen.erase(id);
+				g_takenOff.erase(id);
+				g_leaving.erase(id);
+			}
+			Save();
+			PatchChanged(before);
+			Refresh();
 		}
 
 		// Taking an item off the wheel the normal way unfavourites it (the owner, 2026-09-29: "I just removed the item from
@@ -1630,7 +1694,7 @@ logger::info("wheels: the {} wheel's own button - it is the active wheel", Name(
 			return false;
 		}
 		const auto id = inventory::Keys()[static_cast<std::size_t>(a_slot)];
-		return id && (Equippable(id) || Consumable(id));   // weapons, armour, clothing, lights and potions, poisons, ingredients (the game's refusal message over an open radial may need a click)
+		return id && (Equippable(id) || Consumable(id));   // a poison too: its question over the open wheel is answered without choosing again (quickkeys::GameMessageUp), and closing the wheel for it needed the B fallback, whose B reached the game as crouch   // weapons, armour, clothing, lights and potions, poisons, ingredients (the game's refusal message over an open radial may need a click)
 	}
 
 	void HoldKey(int a_slot)

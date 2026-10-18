@@ -574,6 +574,31 @@ namespace quickkeys
 		return g_status.open;
 	}
 
+	bool GameMessageUp()
+	{
+		static UE::UClass*     s_cls = nullptr;
+		static reflect::Handle s_last;   // the instance seen up last time: asked first
+		if (!s_cls) {
+			s_cls = UE::StaticFindObject<UE::UClass>(nullptr, nullptr, L"/Game/UI/Modern/ModalLayer/Messages/WBP_ModernMenu_Message.WBP_ModernMenu_Message_C");
+			if (!s_cls) return false;   // no message shown yet this session
+		}
+		const auto up = [](UE::UObject* a_w) {
+			if (!a_w) return false;
+			ui::Call act(a_w, L"IsActivated");   // a CommonUI activatable widget: deactivated when answered
+			if (act && act.Run() && !act.Get<bool>("ReturnValue")) return false;
+			ui::Call vis(a_w, L"IsVisible");
+			return vis && vis.Run() && vis.Get<bool>("ReturnValue");
+		};
+		if (up(reflect::Get(s_last))) return true;
+		for (auto* w : reflect::Instances(s_cls)) {
+			if (up(w)) {
+				s_last = reflect::Hold(w);
+				return true;
+			}
+		}
+		return false;
+	}
+
 	bool PanelOpen()
 	{
 		std::scoped_lock l(g_statusLock);

@@ -374,7 +374,7 @@ namespace keyboard
 			const auto menu = menus::Active();
 			const bool inMenu = menu == menus::Menu::kInventory || menu == menus::Menu::kMagic;
 			const bool where = inMenu ? PanelUp(menu) : quickkeys::RadialOpen();   // the assign panel, or the HUD radial
-			if (now && !s_lmb && g_script.kind == Script::kNone && where) {
+			if (now && !s_lmb && g_script.kind == Script::kNone && where && !quickkeys::GameMessageUp()) {   // a click on a message of the game is the message's
 				const int pointed = quickkeys::PointedSlot();   // 1..8, the slot the mouse (or the stick) points at now
 				if (pointed >= 1) {
 					g_script = { Script::kClick, pointed - 1, 0, false, GetTickCount64() };

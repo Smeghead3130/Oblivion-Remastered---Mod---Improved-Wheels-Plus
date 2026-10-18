@@ -6,6 +6,7 @@ in `git log`. A version number is issued by the version gate only once a build i
 ## 1.1.3 - 2026-10-18 - Improved Wheel - Keyboard and Better Controller Support
 
 ### Added
+- An item you dropped, sold or stored leaves the wheels whichever way you did it, mouse and real keyboard keys included (equipment and ammo at once, potions and other consumables in container and barter menus).
 - INI `[Wheel] bStayOpenAfterUse` (0 by default): choosing a weapon, armour or clothing on the Equipment wheel (A, RB or a click) puts it on or takes it off and leaves the wheel open for the next choice; potions and other consumables still close it.
 - INI `[Wheel] bArmourOnWheel` (1 by default): armour and clothing can be assigned to the Equipment wheel like any item (choosing one puts it on, choosing it again takes it off). 0 keeps the original rule: only shields.
 
@@ -19,6 +20,10 @@ in `git log`. A version number is issued by the version gate only once a build i
 
 ### Fixed
 - Potions, enchanted gear and other items the player named got no white star, and some no icon on the wheel: their rows could not be matched to the item. A row is now matched by its typed name, then by its weight and count, and rows that still look alike are paired with the items in list order, so a favourite lights only its own row (items with the same name, weight and count cannot be told apart by their numbers and are paired in list order).
+- With `bStayOpenAfterUse` and `bChooseOnClose` both on, letting go of the wheel button right after a choice used the same slot again (a weapon put on and taken off, a second potion drunk) - mostly with the mouse and the keyboard's slot keys. The slot just used is no longer used by the close.
+- A poison chosen with the wheel staying open asked "apply it to the weapon?" again after every answer (the click or A that answered it was taken as a new choice on the still-open wheel). While any of the game's messages is up over the wheel ("You cannot drink any more potions", "already poisoned") A, RB and clicks answer the message and choose nothing.
+- The player sometimes crouched after a choice on a wheel opened with the game's own keyboard key (R): the B the plugin presses to close a radial that stays open could reach the game after the radial had closed (B is crouch). It is now a single short press, sent only while the radial is up, and a poison no longer needs it (it is applied with the wheel open like a potion).
+- The favourite button (Select, or the keyboard's key for it) works on your own rows in container and barter lists, as in the Inventory.
 - After loading a game a slot could show `-/5` when all its potions had been used in the previous session: a slot that holds entries but shows none now takes its first usable entry.
 - When the item a slot shows is used up (the last potion of a stack) or gone, the slot moves on to its next entry instead of showing -/5.
 - Choosing a spell on the Magic wheel now uses the game's own spell selection, as the Magic menu does: the first cast has the right animation and sound (it had the previous spell's animation and no sound).
