@@ -3,6 +3,13 @@
 Written as changes happen, not reconstructed afterwards (rule 61). Started 2026-09-29; the history before this file is
 in `git log`. A version number is issued by the version gate only once a build is seen working in game (rule 48).
 
+## 1.1.5.1 - 2026-10-19 - Improved Wheels Plus
+
+### Fixed
+- The keyboard's window hook (the native R toggle) now takes itself off again when the game window is destroyed, and forwards messages through a null-safe helper, so nothing is left in the window procedure chain.
+- Its install message is logged at info level instead of warning, so the shipped log (warnings and errors only) stays quiet.
+- No change to the controls or the default settings.
+
 ## 1.1.5 - 2026-10-19 - Improved Wheels Plus
 
 ### Changed

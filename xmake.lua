@@ -15,7 +15,8 @@ add_shflags("/PDBALTPATH:%_PDB%", {force = true})
 includes("lib/commonlibob64")
 
 set_project("ImprovedWheelMenu")
-set_version("1.1.5")
+set_version("1.1.5")   -- xmake only parses major.minor.patch (OBSE sees 1.1.5.0); the release number with its fourth part is IWM_RELEASE below
+local IWM_RELEASE = "1.1.5.1"
 set_license("GPL-3.0-or-later")
 set_languages("c++23")
 set_warnings("allextra")
@@ -33,7 +34,7 @@ target("ImprovedWheelMenu")
     add_syslinks("user32")
     add_packages("minhook", "nlohmann_json")
     on_load(function (target)
-        target:add("defines", "IWM_VERSION=\"" .. (target:version() or "0.0.0") .. "\"")
+        target:add("defines", "IWM_VERSION=\"" .. IWM_RELEASE .. "\"")
     end)
     add_files("src/**.cpp")
     add_headerfiles("src/**.h")
