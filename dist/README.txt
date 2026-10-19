@@ -82,16 +82,12 @@ KNOWN ISSUES
 
 BEFORE YOU INSTALL: CLEAR YOUR EXISTING WHEEL
 ---------------------------------------------
-If you already use the original Improved Wheel Menu (or an earlier build), empty your wheels first. This build keeps the wheels per
-character, and a wheel saved by the old version is taken over by the first character that loads, so start clean to avoid old or
-unwanted entries landing on it. With the old version still installed:
-  1. Open the Inventory and press Y on every favourited item (the star) to take it off its wheel: weapons, armour, potions, arrows.
-     Y again toggles it, so a plain item has no star when it is off the wheel.
-  2. Open the Magic menu and press Y on every starred spell the same way.
-  3. Hold the wheel button and open each wheel (Equipment, Magic, and Ammo with a bow in hand) to check that every slot is empty.
-Do this for each character you play, then close the game and install this build. If you have already installed it, the same can be
-done here: press the favourite button (Select) on a starred item, or press L3 in the Inventory / Magic menu, point a slot and hold X
-for 0.6 s to clear the whole slot.
+Skip this step if your old hotkey slots are empty. Before switching from an older setup, clear it for each character:
+  1. Assign the same item to every old hotkey slot; this also overwrites spell assignments.
+  2. Drop that item on the ground and pick it back up, then check the slots are empty.
+  3. Close the game completely before installing. Older shared mod-wheel files are inherited by the first character loaded.
+Already using this build? Open assignment with L3 / keyboard R, point at a slot and hold X for 0.6 s to clear it.
+Upgrading from 1.1.4? Existing ini bindings are retained; use the supplied [Keyboard] defaults for the new layout.
 
 INSTALLATION
 ------------
