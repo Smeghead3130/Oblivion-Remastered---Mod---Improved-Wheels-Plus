@@ -167,6 +167,15 @@ namespace pad
 				g_snapped = false;
 				g_unreported = 0;
 			}
+			if (open && keyboard::MouseOwnsRadial()) {
+				if (g_snapped) quickkeys::RestorePointer("mouse owns the keyboard-toggle wheel");
+				g_snapped = false;
+				g_unreported = 0;
+				g_radialAway = false;
+				g_radialResting = true;
+				g_radialRestSince = a_now;
+				return;
+			}
 			if (!open || !settings::Get().centreRestSnap || g_closingMagic) {
 				return;
 			}

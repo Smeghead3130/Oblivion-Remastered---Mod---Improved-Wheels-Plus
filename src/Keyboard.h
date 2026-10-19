@@ -15,6 +15,8 @@ namespace keyboard
 {
 	// lays the keys that are down over a_pad; true when any bound key is active (so a pad-less read is worth handing over)
 	bool Apply(XINPUT_GAMEPAD& a_pad);
+	// Keyboard-toggle sessions use mouse pointing; an idle virtual stick must not rest-snap them.
+	bool MouseOwnsRadial();
 	// true when, with no pad connected, the game should be handed an idle connected pad all the time (the game polls a missing pad only
 	// now and then, so the keys would otherwise reach the rules a few times a minute)
 	bool PresentWhenNoPad();

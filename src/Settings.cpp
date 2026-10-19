@@ -117,6 +117,7 @@ namespace settings
 					else a_into = vk;
 				};
 				key(L"sLB", k.lb); key(L"sRB", k.rb); key(L"sLT", k.lt); key(L"sRT", k.rt);
+				key(L"sNextEntryMouse", k.nextEntryMouse);
 				key(L"sA", k.a); key(L"sB", k.b); key(L"sX", k.x); key(L"sY", k.y);
 				key(L"sDpadUp", k.dpadUp); key(L"sDpadDown", k.dpadDown); key(L"sDpadLeft", k.dpadLeft); key(L"sDpadRight", k.dpadRight);
 				key(L"sL3", k.l3); key(L"sR3", k.r3); key(L"sStart", k.start); key(L"sSelect", k.select);
@@ -144,6 +145,7 @@ namespace settings
 						from = comma + 1;
 					}
 				}
+				k.wheelToggle = ReadInt(ini, L"Keyboard", L"bWheelToggle", k.wheelToggle ? 1 : 0, 0, 1) != 0;
 				k.padWhenNone = ReadInt(ini, L"Keyboard", L"bVirtualPadWhenNone", k.padWhenNone ? 1 : 0, 0, 1) != 0;
 				k.replaceQuickKeys = ReadInt(ini, L"Keyboard", L"bReplaceQuickKeys", k.replaceQuickKeys ? 1 : 0, 0, 1) != 0;
 				logger::info("settings: keyboard as a virtual controller {} (LB 0x{:02X}, RB 0x{:02X}, LT 0x{:02X}, RT 0x{:02X}, Select 0x{:02X}, slot 1 0x{:02X})",

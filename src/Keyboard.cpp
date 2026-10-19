@@ -9,12 +9,84 @@
 #include "Ui.h"
 #include "Settings.h"
 
+#include <atomic>
+
 namespace keyboard
 {
 	namespace
 	{
 		std::array<bool, 256> g_down{};
 		ULONGLONG             g_lastActive = 0;
+		bool g_mouseRadial = false;
+		bool g_mouseRadialSeen = false;
+
+		HWND g_keyboardWindow = nullptr;
+		WNDPROC g_previousWindowProc = nullptr;
+		UINT g_releaseWheelMessage = 0;
+		std::atomic<bool> g_nativeWheelAllowed{ false };
+		std::atomic<bool> g_nativeWheelHeld{ false };
+		std::atomic<bool> g_nativeWheelStarted{ false };
+		std::atomic<bool> g_nativeWheelCancel{ false };
+		std::atomic<bool> g_suppressPhysicalRUp{ false };
+		std::atomic<ULONGLONG> g_nativeWheelAt{ 0 };
+		bool g_nativeWheelSeen = false;
+
+		LRESULT CALLBACK KeyboardWindowProc(HWND window, UINT message, WPARAM key, LPARAM data)
+		{
+			// Preserve the native keyboard press across the physical key release. No game objects are touched here.
+			if (message == g_releaseWheelMessage && g_releaseWheelMessage != 0) {
+				return CallWindowProcW(g_previousWindowProc, window, WM_KEYUP, 'R', static_cast<LPARAM>(0xC0130001));
+			}
+			if (message == WM_KILLFOCUS || (message == WM_ACTIVATEAPP && key == FALSE)) {
+				g_nativeWheelAllowed = false;
+				g_nativeWheelHeld = false;
+				g_nativeWheelStarted = false;
+				g_nativeWheelCancel = false;
+				g_suppressPhysicalRUp = false;
+			}
+			if (key == 'R' && message == WM_KEYUP && g_suppressPhysicalRUp.exchange(false)) return 0;
+			if (key == 'R' && message == WM_KEYDOWN) {
+				if ((data & (static_cast<LPARAM>(1) << 30)) && (g_nativeWheelHeld || g_suppressPhysicalRUp)) return 0;
+				if (!(data & (static_cast<LPARAM>(1) << 30)) && g_nativeWheelAllowed) {
+					g_suppressPhysicalRUp = true;
+					if (g_nativeWheelHeld.load()) {
+						g_nativeWheelCancel = true;
+						return 0;
+					}
+					g_nativeWheelHeld = true;
+					g_nativeWheelStarted = true;
+					g_nativeWheelAt = GetTickCount64();
+					// Forward the real native key-down once. The held keyboard action keeps mouse input working.
+				}
+			}
+			return CallWindowProcW(g_previousWindowProc, window, message, key, data);
+		}
+
+		bool InstallNativeWheelToggle()
+		{
+			if (g_keyboardWindow && IsWindow(g_keyboardWindow)) return true;
+			HWND window = GetForegroundWindow();
+			DWORD pid = 0;
+			if (!window || !GetWindowThreadProcessId(window, &pid) || pid != GetCurrentProcessId()) return false;
+			if (!g_releaseWheelMessage) g_releaseWheelMessage = RegisterWindowMessageW(L"cfa911.IWM.NativeWheelRelease");
+			if (!g_releaseWheelMessage) return false;
+			SetLastError(0);
+			const auto previous = SetWindowLongPtrW(window, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(&KeyboardWindowProc));
+			if (!previous) return false;
+			g_previousWindowProc = reinterpret_cast<WNDPROC>(previous);
+			g_keyboardWindow = window;
+			logger::warn("keyboard: native R toggle installed; mouse stays on native keyboard wheel path");
+			return true;
+		}
+
+		void ReleaseNativeWheel()
+		{
+			if (g_nativeWheelHeld.exchange(false) && g_keyboardWindow) {
+				PostMessageW(g_keyboardWindow, g_releaseWheelMessage, 0, 0);
+			}
+			g_nativeWheelSeen = false;
+		}
+
 
 		bool GameHasFocus()
 		{
@@ -215,6 +287,8 @@ namespace keyboard
 				}
 				switch (g_script.phase) {
 				case 0:   // the wheel button, until the radial shows
+					g_mouseRadial = true;
+					g_mouseRadialSeen = false;
 					wheels::KeepActive();
 					a_pad.wButtons |= wheel;
 					if (quickkeys::RadialOpen() && elapsed >= 10) Next(1);
@@ -291,6 +365,8 @@ namespace keyboard
 		const auto& k = settings::Get().keyboard;
 		if (!k.enabled) return false;
 		if (!GameHasFocus()) {
+			g_nativeWheelAllowed = false;
+			ReleaseNativeWheel();
 			g_down = {};
 			return false;
 		}
@@ -317,29 +393,86 @@ namespace keyboard
 			}
 			s_prev = now;
 		}
-		if (Down(k.lb)) wheels::KeepActive();   // the keyboard's own wheel button: the wheel it left is the wheel it opens
-		press(k.lb, XINPUT_GAMEPAD_LEFT_SHOULDER);
-		press(k.rb, XINPUT_GAMEPAD_RIGHT_SHOULDER);
-		press(k.a, XINPUT_GAMEPAD_A);
-		press(k.b, XINPUT_GAMEPAD_B);
-		press(k.x, XINPUT_GAMEPAD_X);
-		press(k.y, XINPUT_GAMEPAD_Y);
-		press(k.dpadUp, XINPUT_GAMEPAD_DPAD_UP);
-		press(k.dpadDown, XINPUT_GAMEPAD_DPAD_DOWN);
-		press(k.dpadLeft, XINPUT_GAMEPAD_DPAD_LEFT);
-		press(k.dpadRight, XINPUT_GAMEPAD_DPAD_RIGHT);
-		press(k.l3, XINPUT_GAMEPAD_LEFT_THUMB);
-		press(k.r3, XINPUT_GAMEPAD_RIGHT_THUMB);
-		press(k.start, XINPUT_GAMEPAD_START);
-		press(k.select, XINPUT_GAMEPAD_BACK);
-		if (Down(k.lt)) {
-			a_pad.bLeftTrigger = 255;
-			any = true;
+		const auto context = menus::Active();
+		const bool radial = quickkeys::RadialOpen();
+		if (g_mouseRadial) {
+			if (radial) g_mouseRadialSeen = true;
+			if ((!radial && g_mouseRadialSeen) || std::hypot(a_pad.sThumbRX / 32767.0, a_pad.sThumbRY / 32767.0) > 0.35) {
+				g_mouseRadial = false;
+				g_mouseRadialSeen = false;
+			}
 		}
-		if (Down(k.rt)) {
-			a_pad.bRightTrigger = 255;
-			any = true;
+
+		const bool panelMenu = context == menus::Menu::kInventory || context == menus::Menu::kMagic;
+		const bool panel = panelMenu && PanelUp(context);
+		const bool gameplay = context == menus::Menu::kNone && !menus::AnyOpen();
+		static bool previousWheel = false;
+		const bool wheelDown = Down(k.lb);
+		const bool mouseDown = Down(k.nextEntryMouse);
+		const bool nativeToggle = k.wheelToggle && k.lb == 'R' && InstallNativeWheelToggle();
+		if (nativeToggle) {
+			g_nativeWheelAllowed = (gameplay || radial) && !ammo::Open();
+			if (g_nativeWheelStarted.exchange(false)) {
+				wheels::KeepActive();
+				g_mouseRadial = true;
+				g_mouseRadialSeen = false;
+				g_nativeWheelSeen = false;
+			}
+			if (g_nativeWheelHeld && radial) g_nativeWheelSeen = true;
+			if (g_nativeWheelCancel.exchange(false)) {
+				if (radial) { a_pad.wButtons |= XINPUT_GAMEPAD_B; any = true; }
+				ReleaseNativeWheel();
+			} else if (g_nativeWheelHeld && ((!radial && g_nativeWheelSeen) || (!radial && !gameplay) ||
+				(!radial && GetTickCount64() - g_nativeWheelAt.load() > 1200))) {
+				ReleaseNativeWheel();
+			}
+		} else if (k.wheelToggle) {
+			g_nativeWheelAllowed = false;
+			if (wheelDown && !previousWheel && (gameplay || radial) && !ammo::Open()) {
+				if (radial) {
+					a_pad.wButtons |= XINPUT_GAMEPAD_B;
+				} else {
+					g_mouseRadial = true;
+					g_mouseRadialSeen = false;
+					wheels::KeepActive();
+					a_pad.wButtons |= static_cast<WORD>(settings::Get().wheelButton);
+				}
+				any = true;
+			}
+		} else if (gameplay || radial) {
+			if (wheelDown) wheels::KeepActive();
+			press(k.lb, static_cast<WORD>(settings::Get().wheelButton));
 		}
+		previousWheel = wheelDown;
+		if (radial && !quickkeys::GameMessageUp()) {
+			press(k.rb, XINPUT_GAMEPAD_RIGHT_SHOULDER);
+			press(k.a, XINPUT_GAMEPAD_A);
+			press(k.b, XINPUT_GAMEPAD_B);
+			press(k.dpadLeft, XINPUT_GAMEPAD_DPAD_LEFT);
+			press(k.dpadRight, XINPUT_GAMEPAD_DPAD_RIGHT);
+			if (Down(k.lt)) { a_pad.bLeftTrigger = 255; any = true; }
+			// Right click shares the next-entry key's trigger and edge handling; never cycle a mouse-derived slot directly.
+			if (Down(k.rt) || mouseDown) { a_pad.bRightTrigger = 255; any = true; }
+		}
+		if (radial || panel || ammo::Open()) {
+			press(k.dpadUp, XINPUT_GAMEPAD_DPAD_UP);
+			press(k.dpadDown, XINPUT_GAMEPAD_DPAD_DOWN);
+			press(k.y, XINPUT_GAMEPAD_Y);
+			press(k.r3, XINPUT_GAMEPAD_RIGHT_THUMB);
+			press(k.start, XINPUT_GAMEPAD_START);
+		}
+
+		if (panelMenu && !Typing()) {
+			press(k.l3, XINPUT_GAMEPAD_LEFT_THUMB);
+			if (panel) {
+				press(k.x, XINPUT_GAMEPAD_X);
+				press(k.a, XINPUT_GAMEPAD_A);
+				press(k.b, XINPUT_GAMEPAD_B);
+				press(k.dpadLeft, XINPUT_GAMEPAD_DPAD_LEFT);
+				press(k.dpadRight, XINPUT_GAMEPAD_DPAD_RIGHT);
+			}
+		}
+		if (menus::AnyOpen() && !radial) press(k.select, XINPUT_GAMEPAD_BACK);
 		// the right stick: four keys, two together make a diagonal
 		const int sx = (Down(k.stickRight) ? 1 : 0) - (Down(k.stickLeft) ? 1 : 0);
 		const int sy = (Down(k.stickUp) ? 1 : 0) - (Down(k.stickDown) ? 1 : 0);
@@ -413,6 +546,11 @@ namespace keyboard
 		const ULONGLONG t = GetTickCount64();
 		if (any) g_lastActive = t;
 		return any || t - g_lastActive < 400;
+	}
+
+	bool MouseOwnsRadial()
+	{
+		return g_mouseRadial && quickkeys::RadialOpen() && !ScriptRunning();
 	}
 
 	bool UseScriptRecent()
