@@ -1,4 +1,5 @@
 #include "Rows.h"
+#include "TextUtil.h"
 
 #include "PEHook.h"
 #include "Inventory.h"
@@ -683,19 +684,10 @@ namespace rows
 			}
 		}
 
-		// The remaster's texture for that path (the primary session's reads, 2026-09-30: Arrow1Iron's icon is
-		// "Weapons\IronArrow.dds", and the paks hold /Game/Art/UI/Icons/Dynamic_Icons/menus/icons/weapons/T_ironarrow -
-		// the folder in lower case, "T_" and the lower-case stem; the HUD's own textures follow the same rule)
+		// the remaster's texture for an icon path: see textutil::IconAssetPath (tested in tests/)
 		std::string IconAssetPath(std::string_view a_icon)
 		{
-			std::string p(a_icon);
-			for (auto& c : p) c = c == '\\' ? '/' : static_cast<char>(std::tolower(static_cast<unsigned char>(c)));
-			if (const auto dot = p.rfind('.'); dot != std::string::npos) p.resize(dot);
-			const auto slash = p.rfind('/');
-			const std::string dir = slash == std::string::npos ? std::string() : p.substr(0, slash + 1);
-			const std::string stem = slash == std::string::npos ? p : p.substr(slash + 1);
-			if (stem.empty()) return {};
-			return "/Game/Art/UI/Icons/Dynamic_Icons/menus/icons/" + dir + "T_" + stem + ".T_" + stem;
+			return textutil::IconAssetPath(a_icon);
 		}
 
 		std::unordered_set<std::uint32_t> g_iconFailed;   // forms whose icon path loaded nothing: not tried again
