@@ -31,11 +31,33 @@ namespace keyboard
 		std::atomic<ULONGLONG> g_nativeWheelAt{ 0 };
 		bool g_nativeWheelSeen = false;
 
+		LRESULT ForwardMessage(HWND window, UINT message, WPARAM key, LPARAM data)
+		{
+			const auto previous = g_previousWindowProc;   // null after the hook was taken off: the default procedure then
+			return previous ? CallWindowProcW(previous, window, message, key, data) : DefWindowProcW(window, message, key, data);
+		}
+
 		LRESULT CALLBACK KeyboardWindowProc(HWND window, UINT message, WPARAM key, LPARAM data)
 		{
+			// The window is going away: take our procedure off again (only when it is still the first in the chain; a hook installed over ours stays
+			// and, with the previous procedure cleared, forwards to the default procedure).
+			if (message == WM_NCDESTROY) {
+				if (GetWindowLongPtrW(window, GWLP_WNDPROC) == reinterpret_cast<LONG_PTR>(&KeyboardWindowProc) && g_previousWindowProc) {
+					SetWindowLongPtrW(window, GWLP_WNDPROC, reinterpret_cast<LONG_PTR>(g_previousWindowProc));
+				}
+				const auto result = ForwardMessage(window, message, key, data);
+				g_nativeWheelAllowed = false;
+				g_nativeWheelHeld = false;
+				g_nativeWheelStarted = false;
+				g_nativeWheelCancel = false;
+				g_suppressPhysicalRUp = false;
+				g_keyboardWindow = nullptr;
+				g_previousWindowProc = nullptr;
+				return result;
+			}
 			// Preserve the native keyboard press across the physical key release. No game objects are touched here.
 			if (message == g_releaseWheelMessage && g_releaseWheelMessage != 0) {
-				return CallWindowProcW(g_previousWindowProc, window, WM_KEYUP, 'R', static_cast<LPARAM>(0xC0130001));
+				return ForwardMessage(window, WM_KEYUP, 'R', static_cast<LPARAM>(0xC0130001));
 			}
 			if (message == WM_KILLFOCUS || (message == WM_ACTIVATEAPP && key == FALSE)) {
 				g_nativeWheelAllowed = false;
@@ -59,7 +81,7 @@ namespace keyboard
 					// Forward the real native key-down once. The held keyboard action keeps mouse input working.
 				}
 			}
-			return CallWindowProcW(g_previousWindowProc, window, message, key, data);
+			return ForwardMessage(window, message, key, data);
 		}
 
 		bool InstallNativeWheelToggle()
@@ -75,7 +97,7 @@ namespace keyboard
 			if (!previous) return false;
 			g_previousWindowProc = reinterpret_cast<WNDPROC>(previous);
 			g_keyboardWindow = window;
-			logger::warn("keyboard: native R toggle installed; mouse stays on native keyboard wheel path");
+			logger::info("keyboard: native R toggle installed; mouse stays on native keyboard wheel path");   // info, not warn: the shipped log level shows warnings only
 			return true;
 		}
 
