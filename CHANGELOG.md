@@ -3,6 +3,16 @@
 Written as changes happen, not reconstructed afterwards (rule 61). Started 2026-09-29; the history before this file is
 in `git log`. A version number is issued by the version gate only once a build is seen working in game (rule 48).
 
+## 1.1.4 - 2026-10-19 - Improved Wheel - Keyboard and Better Controller Support
+
+### Changed
+- `bChooseOnClose` is now 1 by default: pointing at a slot and closing the wheel (letting go of the wheel button, or pressing it again) uses that slot, on whichever wheel is up. B, or letting go with the stick back at rest, still closes without using anything (0 restores the old rule: only A or RB use a slot).
+- `bStayOpenAfterUse` is now 1 by default: a gear, potion or poison chosen on the Equipment wheel is used and the wheel stays open for the next choice (0 closes the wheel on every choice). Letting go of the wheel button right after such a choice does not use that slot a second time.
+- The built-in defaults of `uAnimSpeedPercent` (300) and of the ammo wheel position (`uPosition` 1, the whole ring in the middle of the screen) now equal the values the shipped ini has; they differed only when a key was missing from the ini.
+
+### Fixed
+- A potion on the Equipment wheel was drunk when the Magic wheel was closed with a slot pointed (the wheel button let go, or pressed again) or with B: the game re-points its own selector within a frame and its close uses the quick key of that slot. Every close on nothing now takes the pointed slot's quick key off its item until the radial has closed, as choosing a spell or arrows already did.
+
 ## 1.1.3 - 2026-10-18 - Improved Wheel - Keyboard and Better Controller Support
 
 ### Added

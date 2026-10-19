@@ -1,6 +1,6 @@
 Improved Wheel - Keyboard and Better Controller Support
 =======================================================
-Version 1.1.3
+Version 1.1.4
 
 A modified build of Improved Wheel Menu (Oblivion Remastered) by ApocryphaRealm (GPL-3.0). It replaces the original
 ImprovedWheelMenu.dll and keeps its file and setting names, so install it instead of the original, not beside it.
@@ -31,8 +31,8 @@ ADDED IN THIS BUILD
   * Armour and clothing can be put on the Equipment wheel like any item (bArmourOnWheel, on; 0 keeps only shields, as the original mod).
   * The stick points only at slots that hold something (bPointFilledOnly, off by default; 1 turns it on): empty slots are skipped on the Equipment, Magic and Ammo wheels, as the Ammo
     shortcut always did.
-  * bChooseOnClose (on): closing the wheel by letting go of its button, or pressing it again, uses the slot the stick points at, on whichever wheel is up -
-    point and close, no A or RB needed. B still closes without using anything.
+  * bChooseOnClose (on by default): closing the wheel by letting go of its button, or pressing it again, uses the slot the stick points at, on whichever wheel is up -
+    point and close, no A or RB needed. B still closes without using anything, and so does letting go with the stick back at rest (bCentreRestSnap).
   * bRememberWheel (on): the radial opens on the wheel you left it on; 0 = always on the Equipment wheel.
   * A left mouse click on the radial or the assign panel is the A button on the slot the mouse points at. A potion, poison or ingredient is used at
     once, however you choose it. Choosing the slot of a weapon, armour or clothing that is already worn takes it off.
@@ -46,8 +46,9 @@ WHAT YOU GET
   * The inventory wheel: hold the game's quick-key button to open the radial and point with the right stick. Each of
     the eight slots holds up to five items (uEntriesPerSlot); the counter under the wheel shows which place the shown
     item has and how many the slot holds. LT and RT choose the item within the pointed slot, RB or A use it, and
-    D-pad left and right switch between the inventory and Magic wheels.Pointing alone never uses anything (unless
-    bChooseOnClose is on), letting go of the wheel button uses nothing, and B closes the wheel.
+    D-pad left and right switch between the inventory and Magic wheels. Pointing alone never uses anything. With
+    bChooseOnClose on (the default) letting go of the wheel button uses the pointed slot; with it off, or with the stick at rest, it uses
+    nothing. B always closes the wheel without using anything.
   * The centre rest snap (bCentreRestSnap, on by default): with it on, the stick back at rest in the middle points
     no slot, so letting go of the stick never picks one by mistake. With it off a slot stays pointed until you pick
     (A or RB) or close the wheel.
