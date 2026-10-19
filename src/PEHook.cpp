@@ -70,6 +70,16 @@ namespace pe
 		return out;
 	}
 
+	std::wstring Wide(const std::string& a_s)
+	{
+		const int n = a_s.empty() ? 0 : MultiByteToWideChar(CP_UTF8, 0, a_s.data(), static_cast<int>(a_s.size()), nullptr, 0);
+		std::wstring out(n > 0 ? static_cast<std::size_t>(n) : 0, L'\0');
+		if (n > 0) {
+			MultiByteToWideChar(CP_UTF8, 0, a_s.data(), static_cast<int>(a_s.size()), out.data(), n);
+		}
+		return out;
+	}
+
 	std::string FunctionName(UE::UFunction* a_fn)
 	{
 		return a_fn ? Utf8(a_fn->GetFName().ToString()) : std::string();

@@ -1,5 +1,6 @@
 #include "UiText.h"
 
+#include "PEHook.h"
 #include "Reflect.h"
 #include "Ui.h"
 
@@ -30,7 +31,7 @@ namespace uix
 		const auto params = fn ? reflect::Fields(reinterpret_cast<UE::UStruct*>(fn)) : std::vector<std::pair<std::string, std::int32_t>>{};
 		if (params.empty()) return false;
 		std::vector<std::uint8_t> buf(static_cast<std::size_t>(std::max(reinterpret_cast<UE::UStruct*>(fn)->propertiesSize, 0)) + 16, 0);
-		const std::wstring w(a_text.begin(), a_text.end());
+		const std::wstring w = pe::Wide(a_text);
 		auto*              text = new (buf.data() + params.front().second) UE::FText(UE::FText::AsCultureInvariant(UE::FString(w.c_str())));
 		a_widget->ProcessEvent(fn, buf.data());
 		text->~FText();

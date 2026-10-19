@@ -435,7 +435,7 @@ namespace ammo
 			if (params.empty()) {
 				return;
 			}
-			const std::wstring w(a_text.begin(), a_text.end());
+			const std::wstring w = pe::Wide(a_text);
 			std::vector<std::uint8_t> buf(static_cast<std::size_t>(std::max(reinterpret_cast<UE::UStruct*>(fn)->propertiesSize, 0)) + 16, 0);
 			UE::FText* text = nullptr;
 			if (a_text.starts_with("LOC_")) {

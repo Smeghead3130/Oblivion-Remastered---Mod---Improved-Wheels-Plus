@@ -5,6 +5,7 @@
 #include "Menus.h"
 #include "Pad.h"
 #include "QuickKeys.h"
+#include "PEHook.h"
 #include "Reflect.h"
 #include "Rows.h"
 #include "SlotCounts.h"
@@ -84,7 +85,7 @@ ui::Visible(root, false);
 			const auto params = fn ? reflect::Fields(reinterpret_cast<UE::UStruct*>(fn)) : std::vector<std::pair<std::string, std::int32_t>>{};
 			if (params.empty()) return;
 			std::vector<std::uint8_t> buf(static_cast<std::size_t>(std::max(reinterpret_cast<UE::UStruct*>(fn)->propertiesSize, 0)) + 16, 0);
-			const std::wstring w(a_text.begin(), a_text.end());
+			const std::wstring w = pe::Wide(a_text);
 			auto* text = new (buf.data() + params.front().second) UE::FText(UE::FText::AsCultureInvariant(UE::FString(w.c_str())));
 			a_label->ProcessEvent(fn, buf.data());
 			text->~FText();
@@ -99,7 +100,7 @@ ui::Visible(root, false);
 			auto* fn = a_label->FindFunction(UE::FName(L"SetText", UE::EFindName::Find));
 			const auto params = fn ? reflect::Fields(reinterpret_cast<UE::UStruct*>(fn)) : std::vector<std::pair<std::string, std::int32_t>>{};
 			if (params.empty()) return;
-			const std::wstring w(a_text.begin(), a_text.end());
+			const std::wstring w = pe::Wide(a_text);
 			std::vector<std::uint8_t> buf(static_cast<std::size_t>(std::max(reinterpret_cast<UE::UStruct*>(fn)->propertiesSize, 0)) + 16, 0);
 			UE::FText* text = nullptr;
 			if (a_text.starts_with("LOC_")) {
@@ -135,7 +136,7 @@ ui::Visible(root, false);
 			void* key = t.At("Key");
 			void* ret = t.At("ReturnValue");
 			if (!id || !key || !ret) return a_text;
-			const std::wstring w(a_text.begin(), a_text.end());
+			const std::wstring w = pe::Wide(a_text);
 			new (id) UE::FName(kFullNames, UE::EFindName::Add);
 			auto* k = new (key) UE::FString(w.c_str());
 			t.Run();
