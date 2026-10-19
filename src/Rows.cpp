@@ -652,6 +652,16 @@ namespace rows
 
 	namespace
 	{
+		// the first of the two inventory icons (male, female) that has a path
+		const RE::TESIcon* BipedIcon(RE::TESBipedModelForm* a_biped)
+		{
+			if (!a_biped) return nullptr;
+			for (const auto& i : a_biped->inventoryIcon) {
+				if (i.textureName.c_str() && *i.textureName.c_str()) return &i;
+			}
+			return nullptr;
+		}
+
 		// The form's own icon path (TESIcon), as the plugin data gives it: "Weapons\IronArrow.dds"
 		const RE::TESIcon* IconOf(RE::TESForm* a_form)
 		{
@@ -665,6 +675,10 @@ namespace rows
 			case RE::FormType::Ingredient: return a_form->As<RE::IngredientItem>();
 			case RE::FormType::AlchemyItem: return a_form->As<RE::AlchemyItem>();
 			case RE::FormType::Light: return a_form->As<RE::TESObjectLIGH>();
+			// armor and clothing keep their picture in the biped form's inventoryIcon[2] (male, female), not in a TESIcon base:
+			// without these two the wheel had no picture for them until an inventory row had shown it (user report, 2026-10-19)
+			case RE::FormType::Armor: return BipedIcon(a_form->As<RE::TESObjectARMO>());
+			case RE::FormType::Clothing: return BipedIcon(a_form->As<RE::TESObjectCLOT>());
 			default: return nullptr;
 			}
 		}
