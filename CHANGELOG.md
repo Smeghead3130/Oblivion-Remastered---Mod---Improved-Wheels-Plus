@@ -3,6 +3,17 @@
 Written as changes happen, not reconstructed afterwards (rule 61). Started 2026-09-29; the history before this file is
 in `git log`. A version number is issued by the version gate only once a build is seen working in game (rule 48).
 
+## 1.1.6 - 2026-10-19 - Improved Wheels Plus
+
+### Fixed
+- German letters (Ä Ö Ü ä ö ü ß) and every other non-ASCII letter in spell and item names now show on the wheels. Names were converted to text one byte at a time, so "Größere" was drawn as "Grere"; they are now converted as UTF-8 (the wheel's centre name, the slot counts, the ammo label).
+- Armor and clothing icons now show on the Equipment wheel right after a game load, without opening the Inventory first. The wheel loads the item's own picture from the game's files, as it already did for weapons, potions and ammo.
+- A crash when typing a digit key while a save was loading: the scan for the Menu Search text box read the name of an object the game had already freed. That read is now fault-guarded and such an object is skipped.
+- No change to the controls or the default settings.
+
+### Developer
+- Unit tests for the text helpers (`tests/`, `xmake build Tests && xmake run Tests`); `src/TextUtil.h` holds the engine-free helpers. Not part of the plugin.
+
 ## 1.1.5.1 - 2026-10-19 - Improved Wheels Plus
 
 ### Fixed
