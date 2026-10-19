@@ -1,6 +1,6 @@
 Improved Wheel - Keyboard and Better Controller Support
 =======================================================
-Version 1.1.4
+Version 1.1.5
 
 A modified build of Improved Wheel Menu (Oblivion Remastered) by ApocryphaRealm (GPL-3.0). It replaces the original
 ImprovedWheelMenu.dll and keeps its file and setting names, so install it instead of the original, not beside it.
@@ -14,8 +14,9 @@ ADDED IN THIS BUILD
 -------------------
   * KEYBOARD SUPPORT, the main addition: the whole wheel menu works from the keyboard, with or without a controller. Every key is
     configurable in the [Keyboard] section of ImprovedWheelMenu.ini (and so is every other setting): each key presses the controller
-    control it is named for, so every rule below works from the keyboard. Defaults: End = LB (opens the wheel), [ and ] = D-pad left / right,
-    comma / period = LT / RT, backslash = RB, F = Select (favourite), Home = L3 (assign panel), Delete = X; number keys 1-8 and Numpad 1-8
+    control it is named for, so every rule below works from the keyboard. Defaults: R toggles the gameplay wheel; Q / E switch wheels;
+    Z / C step entries; right click advances an entry; Esc cancels; backslash uses; F favourites;
+    native menu R opens assignment; hold X clears a slot. The number keys 1-8 and Numpad 1-8
     are slot keys (in gameplay they point at that slot and use it; in the Inventory / Magic menu they assign the highlighted item or spell to it).
   * Hold X (0.6 s) on a pointed slot of the assign panel to clear the whole slot; L3 opens the assign panel.
   * Select (uFavouriteButton) favourites the highlighted item or spell; LB (uWheelButton) opens the wheel; the game's Y sorting is kept.
@@ -62,12 +63,10 @@ WHAT YOU GET
   * Each slot shows "2/5" (the place of the shown entry out of the slot's cap) on both wheels, and the centre of the wheel
     names the pointed spell or item.
   * Keyboard (INI [Keyboard], every key rebindable): the keyboard is a virtual controller - each key presses the
-    controller control it is named for, so every rule here works from the keyboard. Defaults: End = LB (wheel button),
-    [ and ] = D-pad left / right (switch wheels; ammo wheel with a bow), comma / period = LT / RT (step entries),
-    backslash = RB (use), F = Select (favourite; not while a search box has the keyboard), Home = L3 (assign panel), Delete = X (hold to clear a slot).
-    The number row and Numpad 1-8 are slot keys: in gameplay they point at slot N and use it at once; in the Inventory /
-    Magic menu they assign the highlighted item or spell to slot N. The game's own keyboard quick keys are taken off
-    those keys (bReplaceQuickKeys=0 leaves them); the radial still opens with the game's own key (hold R).
+    controller control it is named for, so every rule here works from the keyboard. Defaults: R toggles the gameplay wheel, Q / E switch wheels,
+    Z / C step entries, right click advances an entry, Esc cancels, backslash or left click uses,
+    F favourites, native menu R opens assignment, and hold X clears a slot. Number keys and Numpad 1-8
+    use slots in gameplay or assign the highlighted item/spell in menus. Existing ini files retain their bindings.
   * The Magic wheel: a separate wheel for spells, always drawn as itself. A pick makes the spell the one the cast
     button casts, and the HUD's quick-magic picture follows it.
   * The ammo wheel: with a bow held, D-pad right opens a half wheel on the right-hand edge with the arrows you have
@@ -79,8 +78,7 @@ WHAT YOU GET
 KNOWN ISSUES
 ------------
   * There is no settings page; the INI holds the few settings there are.
-  * Controller first: the wheel is the game's controller radial. On keyboard and mouse the game's own quick keys work
-    as before.
+  * Existing ini files retain their configured bindings; update [Keyboard] for the new defaults.
 
 BEFORE YOU INSTALL: CLEAR YOUR EXISTING WHEEL
 ---------------------------------------------

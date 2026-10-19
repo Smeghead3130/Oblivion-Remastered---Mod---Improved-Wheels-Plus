@@ -3,6 +3,18 @@
 Written as changes happen, not reconstructed afterwards (rule 61). Started 2026-09-29; the history before this file is
 in `git log`. A version number is issued by the version gate only once a build is seen working in game (rule 48).
 
+## 1.1.5 - 2026-10-19 - Improved Wheels Plus
+
+### Changed
+- Keyboard defaults: R toggles the gameplay wheel; Q/E switch wheels; Z/C cycle entries; Esc cancels; hold X clears an assign-panel slot. Native menu R still opens assignment. Existing ini bindings remain configurable.
+- Added `[Keyboard] bWheelToggle` and `sNextEntryMouse`; right click advances the pointed slot's entry through the same trigger path as the next-entry key.
+- Context-gated virtual keyboard controls to their wheel/menu actions.
+
+### Fixed
+- Mouse recentering after tapping and releasing R: the R toggle now preserves the native keyboard action instead of relying on a virtual controller opening pulse.
+- Keyboard mouse selection is excluded from controller centre-rest snapping; real stick input returns ownership to the controller.
+- Right-click entry cycling no longer directly cycles a separately calculated mouse slot, avoiding reported extra cycles and changes to previous slots.
+
 ## 1.1.4 - 2026-10-19 - Improved Wheel - Keyboard and Better Controller Support
 
 ### Changed
