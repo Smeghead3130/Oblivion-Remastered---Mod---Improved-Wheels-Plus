@@ -121,6 +121,33 @@ namespace keyboard
 
 		bool Down(int a_vk) { return a_vk > 0 && a_vk < 256 && (GetAsyncKeyState(a_vk) & 0x8000) != 0; }
 
+		// Is this array slot's object one of the search plugins' text boxes? The array is walked while the game loads and frees
+		// objects: a slot can hold an object already torn down, whose class or name index is garbage and the engine's name lookup
+		// faults on it (crash 2026-10-19 18:30, SearchBoxFocused on a digit key). The reads are fault-guarded; such a slot is skipped.
+		struct BoxCtx
+		{
+			UE::UObject* obj;
+			bool         isBox;
+		};
+
+		void IsSearchBoxRun(void* a_ctx)
+		{
+			auto* c = static_cast<BoxCtx*>(a_ctx);
+			c->isBox = pe::Utf8(c->obj->GetClass()->GetFName().ToString()) == "EditableTextBox" &&
+				pe::Utf8(c->obj->GetFName().ToString()).find("OIS_SearchBox") != std::string::npos;
+		}
+
+		bool IsSearchBox(UE::UObject* a_obj)   // no C++ objects here: __try cannot unwind them
+		{
+			BoxCtx ctx{ a_obj, false };
+			__try {
+				IsSearchBoxRun(&ctx);
+			} __except (GetExceptionCode() == EXCEPTION_ACCESS_VIOLATION ? EXCEPTION_EXECUTE_HANDLER : EXCEPTION_CONTINUE_SEARCH) {
+				return false;
+			}
+			return ctx.isBox;
+		}
+
 		// a search box (the Inventory Search / Magic Search plugins') has the keyboard: digits are typing, not slot keys
 		bool SearchBoxFocused()
 		{
@@ -133,8 +160,7 @@ namespace keyboard
 				auto* item = arr->IndexToObject(i);
 				if (!item || !item->object) continue;
 				auto* o = reinterpret_cast<UE::UObject*>(item->object);
-				if (pe::Utf8(o->GetClass()->GetFName().ToString()) != "EditableTextBox") continue;
-				if (pe::Utf8(o->GetFName().ToString()).find("OIS_SearchBox") == std::string::npos) continue;
+				if (!IsSearchBox(o)) continue;
 				ui::Call c(o, L"HasKeyboardFocus");
 				if (c && c.RunGuarded() && c.Get<bool>("ReturnValue")) focused = true;
 			}
