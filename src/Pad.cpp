@@ -267,6 +267,9 @@ namespace pad
 		{
 			const int pointed = PointedKey();
 			quickkeys::ClearPointer();
+			// the game re-points within a frame and its close uses the quick key there: with the stick on a slot of the Magic wheel and the
+			// button let go, a potion on the same slot of the Equipment wheel was drunk (2026-10-19, first wheel use after loading)
+			wheels::HoldKey(pointed);
 			g_closingMagic = true;
 			logger::info("pad: the wheel closed by {} - nothing used{}", a_how,
 				pointed >= 0 ? std::format(" (slot {} was pointed: RB or A uses a slot)", pointed + 1) : std::string());
@@ -747,7 +750,10 @@ namespace pad
 				}
 				if (quickkeys::RadialOpen() && (pressed & XINPUT_GAMEPAD_B)) {
 					// B backs out: nothing is used, the wheel closes
+					const int bPointed = PointedKey();
 					quickkeys::ClearPointer();
+					wheels::HoldKey(bPointed);   // as CloseOnNothing: the game's close must find no item on the key it re-points to
+					g_closingMagic = true;       // held clear until the radial has closed, then the key goes back (ReleaseKey)
 					g_latched = false;
 					if (raw & wheelBtn) { g_suppressDown = true; }
 					g_swallowB = true;
