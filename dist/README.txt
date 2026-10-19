@@ -27,11 +27,11 @@ ADDED IN THIS BUILD
   * Wheels are kept per character, and anything a loaded save cannot have (a spell or item that character does not own) is taken off
     the wheel so nothing tries to use a form that is not there.
   * Favourites can be dropped and sold (bBlockFavouriteDropSell, off); they leave the wheel once none is carried. 1 restores the original mod's block.
-  * bStayOpenAfterUse (off by default): an item chosen on the Equipment wheel (gear, potions, poisons) is used and the wheel stays open, so several can be used in one opening.
+  * bStayOpenAfterUse (on by default): an item chosen on the Equipment wheel (gear, potions, poisons) is used and the wheel stays open, so several can be used in one opening.
   * Armour and clothing can be put on the Equipment wheel like any item (bArmourOnWheel, on; 0 keeps only shields, as the original mod).
   * The stick points only at slots that hold something (bPointFilledOnly, off by default; 1 turns it on): empty slots are skipped on the Equipment, Magic and Ammo wheels, as the Ammo
     shortcut always did.
-  * bChooseOnClose (off): closing the wheel by letting go of its button, or pressing it again, uses the slot the stick points at, on whichever wheel is up -
+  * bChooseOnClose (on): closing the wheel by letting go of its button, or pressing it again, uses the slot the stick points at, on whichever wheel is up -
     point and close, no A or RB needed. B still closes without using anything.
   * bRememberWheel (on): the radial opens on the wheel you left it on; 0 = always on the Equipment wheel.
   * A left mouse click on the radial or the assign panel is the A button on the slot the mouse points at. A potion, poison or ingredient is used at
