@@ -3,6 +3,17 @@
 Written as changes happen, not reconstructed afterwards (rule 61). Started 2026-09-29; the history before this file is
 in `git log`. A version number is issued by the version gate only once a build is seen working in game (rule 48).
 
+## 1.3.0 - 2026-10-21 - Improved Wheels Plus
+
+### Added
+- The counter under each slot now reads the entry shown out of the entries the slot holds: "2/3" for a slot with three entries, "0/0" for an empty slot, "-/3" when the game's key holds none of them (a reader's idea: "if I see x/3 I know there's space for two more"). The Ammo wheel follows the same rule. New setting `bShowSlotCapacity` in `[Wheel]` (default 0); set it to 1 for the old style, "2/5", "0/5", "-/5".
+
+### Fixed
+- A repair hammer on the Equipment wheel did nothing. It now opens the Inventory and then the repair menu over it, as the game does (the game's own quick-key press has no effect on the hammer, and the repair menu opened from plain gameplay left a blurred screen with an empty black panel). Esc leaves the repair menu and a second Esc closes the Inventory. If the Inventory does not open within 3 seconds nothing is used. Only the standard repair hammer is covered.
+- After a click on a slot of the wheel opened with R, the wheel stayed open until Esc or R was pressed; it now closes by itself after the use.
+- Esc often needed many presses to close the assign panel (the wheel that opens with R in the Inventory and Magic menus): the game ignored the first L3 the mod played. The mod now plays it again when the panel is still up after 0.6 s, up to three tries, so one Esc closes it; the close sound is heard twice.
+- The default look of the slot counters changes ("2/3" instead of "2/5"); `bShowSlotCapacity=1` restores it. No other change to the default settings or the controls.
+
 ## 1.2.0 - 2026-10-20 - Improved Wheels Plus
 
 ### Fixed
