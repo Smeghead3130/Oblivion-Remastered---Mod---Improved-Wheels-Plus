@@ -110,6 +110,39 @@ namespace keyboard
 		}
 
 
+		// A slot key must not feed the game a gamepad: the injected wheel button and right stick each made the game drop the Caps Lock walk toggle
+		// (measured 2026-10-20: the controller byte at +0xA59 of VEnhancedAltarPlayerController went 1>0 on the first read that carried LB, and, with
+		// the radial opened by the native R key, on the first read that carried the stick; the R + mouse click path, whose only injected input is A,
+		// never did; restoring that byte alone did not bring the walking back). So, with the native R toggle on, the script opens the radial with a
+		// real R key-down, points by moving the mouse cursor along the slot's direction (the game points by the cursor's angle round the middle)
+		// and presses only A - the same inputs as R, pointing and a click.
+		bool PostNativeWheelDown()
+		{
+			const auto& k = settings::Get().keyboard;
+			if (!k.wheelToggle || k.lb != 'R' || !g_keyboardWindow || !IsWindow(g_keyboardWindow) || !g_nativeWheelAllowed || g_nativeWheelHeld) return false;
+			return PostMessageW(g_keyboardWindow, WM_KEYDOWN, 'R', static_cast<LPARAM>(0x00130001)) != 0;
+		}
+
+		POINT g_cursorBefore{};
+		bool  g_cursorSaved = false;
+
+		void PointCursorAtSlot(int a_slot0)   // the cursor at a_slot0 (0-7, clockwise from the top) of the screen's middle, where the wheel is
+		{
+			RECT rc{};
+			if (!g_keyboardWindow || !GetClientRect(g_keyboardWindow, &rc) || rc.bottom <= 0) return;
+			if (!g_cursorSaved) g_cursorSaved = GetCursorPos(&g_cursorBefore) != 0;
+			const double angle = a_slot0 * 45.0 * 3.14159265358979323846 / 180.0, radius = rc.bottom * 0.22;
+			POINT        p{ rc.right / 2 + static_cast<LONG>(std::lround(std::sin(angle) * radius)), rc.bottom / 2 - static_cast<LONG>(std::lround(std::cos(angle) * radius)) };
+			ClientToScreen(g_keyboardWindow, &p);
+			SetCursorPos(p.x, p.y);
+		}
+
+		void RestoreCursor()
+		{
+			if (g_cursorSaved) SetCursorPos(g_cursorBefore.x, g_cursorBefore.y);
+			g_cursorSaved = false;
+		}
+
 		bool GameHasFocus()
 		{
 			const HWND fg = GetForegroundWindow();
@@ -299,6 +332,7 @@ namespace keyboard
 		void End(const char* a_why)
 		{
 			if (g_script.kind == Script::kUse) g_useScriptEnded = GetTickCount64();
+			if (g_script.kind == Script::kUse && g_script.openedPanel) { ReleaseNativeWheel(); RestoreCursor(); }   // openedPanel: this script pressed the native R
 			logger::info("keyboard: slot key script ended ({})", a_why);
 			g_script.kind = Script::kNone;
 		}
@@ -338,18 +372,28 @@ namespace keyboard
 					g_mouseRadial = true;
 					g_mouseRadialSeen = false;
 					wheels::KeepActive();
-					a_pad.wButtons |= wheel;
+					if (!g_script.openedPanel && !quickkeys::RadialOpen()) g_script.openedPanel = PostNativeWheelDown();
+					if (!g_script.openedPanel) a_pad.wButtons |= wheel;   // no native R toggle: the wheel button, as before
 					if (quickkeys::RadialOpen() && elapsed >= 10) Next(1);
 					else if (elapsed > 900) End("the radial did not open");
 					break;
-				case 1:   // the stick at the slot, until it is pointed
-					a_pad.wButtons |= wheel;
-					stick();
+				case 1:   // the stick (or the cursor) at the slot, until it is pointed
+					if (g_script.openedPanel) {
+						PointCursorAtSlot(g_script.slot);
+					} else {
+						a_pad.wButtons |= wheel;
+						stick();
+					}
 					if ((pointed && elapsed >= 25) || elapsed > 400) Next(2);
 					break;
 				case 2:   // A: uses the slot and closes the wheel
-					a_pad.wButtons |= wheel | XINPUT_GAMEPAD_A;
-					stick();
+					if (g_script.openedPanel) {
+						PointCursorAtSlot(g_script.slot);
+						a_pad.wButtons |= XINPUT_GAMEPAD_A;
+					} else {
+						a_pad.wButtons |= wheel | XINPUT_GAMEPAD_A;
+						stick();
+					}
 					if (elapsed >= 50) Next(3);
 					break;
 				default:
@@ -467,6 +511,12 @@ namespace keyboard
 				g_nativeWheelSeen = false;
 			}
 			if (g_nativeWheelHeld && radial) g_nativeWheelSeen = true;
+			{   // the cancel key (Esc): the same as a second R - B and the key-up of the held native R (B alone left the radial up)
+				static bool s_bPrev = false;
+				const bool  bDown = k.b > 0 && Down(k.b) && !Typing();
+				if (bDown && !s_bPrev && g_nativeWheelHeld && radial) g_nativeWheelCancel = true;
+				s_bPrev = bDown;
+			}
 			if (g_nativeWheelCancel.exchange(false)) {
 				if (radial) { a_pad.wButtons |= XINPUT_GAMEPAD_B; any = true; }
 				ReleaseNativeWheel();
