@@ -5,6 +5,7 @@
 #include "Pad.h"
 #include "PEHook.h"
 #include "QuickKeys.h"
+#include "Reflect.h"
 #include "Wheels.h"
 #include "Ui.h"
 #include "Settings.h"
@@ -181,27 +182,60 @@ namespace keyboard
 			return ctx.isBox;
 		}
 
-		// a search box (the Inventory Search / Magic Search plugins') has the keyboard: digits are typing, not slot keys
-		bool SearchBoxFocused()
-		{
-			auto* arr = UE::FUObjectArray::GetSingleton();
-			if (!arr) return false;
-			bool focused = false;
-			arr->LockInternalArray();
-			const std::int32_t n = arr->GetObjectArrayNum();
-			for (std::int32_t i = 0; i < n && !focused; ++i) {
-				auto* item = arr->IndexToObject(i);
-				if (!item || !item->object) continue;
-				auto* o = reinterpret_cast<UE::UObject*>(item->object);
-				if (!IsSearchBox(o)) continue;
-				ui::Call c(o, L"HasKeyboardFocus");
-				if (c && c.RunGuarded() && c.Get<bool>("ReturnValue")) focused = true;
-			}
-			arr->UnlockInternalArray();
-			return focused;
-		}
+		// The text boxes only exist when the Inventory Search / Magic Search plugins are loaded (SearchLight's bars are not text boxes).
+// Without them there is nothing to find and the object array is never walked: the walk builds two name strings per object and
+// took most of the game thread while the Inventory or Magic menu was open (capture 2026-10-20: 93 % of one core, 40 % of the
+// samples in SearchBoxFocused).
+bool SearchPluginLoaded()
+{
+	static const bool loaded = GetModuleHandleW(L"OblivionInventorySearch.dll") != nullptr || GetModuleHandleW(L"OblivionMagicSearch.dll") != nullptr;
+	return loaded;
+}
 
-		// the mouse is over the wheel on screen (viewport units, as the widget is measured)
+// a search box (the Inventory Search / Magic Search plugins') has the keyboard: digits are typing, not slot keys.
+// The boxes found are kept (as Handles: the slot says whether the object is still the same); the array is walked again only when
+// no kept box is alive, at most once a second, and once when the open menu changes (each menu builds its own box).
+bool SearchBoxFocused()
+{
+	if (!SearchPluginLoaded()) return false;
+	static std::vector<reflect::Handle> s_boxes;
+	static ULONGLONG                    s_scanned = 0;
+	static int                          s_scanMenu = -1;
+
+	bool alive = false, focused = false;
+	for (const auto& h : s_boxes) {
+		auto* o = reflect::Get(h);
+		if (!o) continue;
+		alive = true;
+		ui::Call c(o, L"HasKeyboardFocus");
+		if (c && c.RunGuarded() && c.Get<bool>("ReturnValue")) focused = true;
+	}
+	const int       menu = static_cast<int>(menus::Active());
+	const ULONGLONG now = GetTickCount64();
+	if (focused || (alive && menu == s_scanMenu) || now - s_scanned < 1000) return focused;
+	s_scanned = now;
+	s_scanMenu = menu;
+
+	auto* arr = UE::FUObjectArray::GetSingleton();
+	if (!arr) return focused;
+	s_boxes.clear();
+	focused = false;
+	arr->LockInternalArray();
+	const std::int32_t n = arr->GetObjectArrayNum();
+	for (std::int32_t i = 0; i < n; ++i) {
+		auto* item = arr->IndexToObject(i);
+		if (!item || !item->object) continue;
+		auto* o = reinterpret_cast<UE::UObject*>(item->object);
+		if (!IsSearchBox(o)) continue;
+		s_boxes.push_back(reflect::Hold(o));
+		ui::Call c(o, L"HasKeyboardFocus");
+		if (c && c.RunGuarded() && c.Get<bool>("ReturnValue")) focused = true;
+	}
+	arr->UnlockInternalArray();
+	return focused;
+}
+
+// the mouse is over the wheel on screen (viewport units, as the widget is measured)
 		// the mouse is reported in screen pixels, the widgets are measured in viewport units (pixels / the UI's DPI scale: the log
 		// showed the cursor at the exact middle of a 2560 x 1440 screen with the wheel's middle at (960, 540)); the scale comes from the
 		// game (GetViewportScale), failing that the engine's default rule of the window height over 1080, or the INI's own value
