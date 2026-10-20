@@ -1,6 +1,6 @@
 Improved Wheel - Keyboard and Better Controller Support
 =======================================================
-Version 1.1.7
+Version 1.2.0
 
 A modified build of Improved Wheel Menu (Oblivion Remastered) by ApocryphaRealm (GPL-3.0). It replaces the original
 ImprovedWheelMenu.dll and keeps its file and setting names, so install it instead of the original, not beside it.

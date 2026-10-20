@@ -3,6 +3,14 @@
 Written as changes happen, not reconstructed afterwards (rule 61). Started 2026-09-29; the history before this file is
 in `git log`. A version number is issued by the version gate only once a build is seen working in game (rule 48).
 
+## 1.2.0 - 2026-10-20 - Improved Wheels Plus
+
+### Fixed
+- The Inventory and Magic menus no longer lag while a SearchLight search plugin is installed. Each time the wheel checked whether a search box had focus it walked the game's whole object array (more than two million entries), which stalled the menu and made hovering and scrolling stutter. The check now remembers the search boxes it found and looks again at most once a second and once per menu change, so the cost is a handful of reads.
+- Esc now closes the assign panel in the Inventory and Magic menus (the wheel that opens with R). It did nothing there: the game closes the panel on L3, not on B, so the Esc key now plays L3 while the panel is up. A second Esc closes the menu as before.
+- Digits and the wheel letters typed into SearchLight's search bar no longer act as wheel keys (typing 1-8 assigned the highlighted item to that slot), and a click on the search bar with the wheel open no longer assigns the highlighted item to slot 1. The wheel asks SearchLight (`MenuSearch_IsTyping`, `MenuSearch_CursorOverBar`), so this needs the SearchLight release after 1.2.1; with 1.2.1 or older the wheel behaves as before.
+- No change to the default settings or the controls.
+
 ## 1.1.7 - 2026-10-20 - Improved Wheels Plus
 
 ### Fixed

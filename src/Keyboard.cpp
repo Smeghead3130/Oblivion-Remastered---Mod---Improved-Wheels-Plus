@@ -183,59 +183,77 @@ namespace keyboard
 		}
 
 		// The text boxes only exist when the Inventory Search / Magic Search plugins are loaded (SearchLight's bars are not text boxes).
-// Without them there is nothing to find and the object array is never walked: the walk builds two name strings per object and
-// took most of the game thread while the Inventory or Magic menu was open (capture 2026-10-20: 93 % of one core, 40 % of the
-// samples in SearchBoxFocused).
-bool SearchPluginLoaded()
-{
-	static const bool loaded = GetModuleHandleW(L"OblivionInventorySearch.dll") != nullptr || GetModuleHandleW(L"OblivionMagicSearch.dll") != nullptr;
-	return loaded;
-}
+		// Without them there is nothing to find and the object array is never walked: the walk builds two name strings per object and
+		// took most of the game thread while the Inventory or Magic menu was open (capture 2026-10-20: 93 % of one core, 40 % of the
+		// samples in SearchBoxFocused).
+		bool SearchPluginLoaded()
+		{
+			static const bool loaded = GetModuleHandleW(L"OblivionInventorySearch.dll") != nullptr || GetModuleHandleW(L"OblivionMagicSearch.dll") != nullptr;
+			return loaded;
+		}
 
-// a search box (the Inventory Search / Magic Search plugins') has the keyboard: digits are typing, not slot keys.
-// The boxes found are kept (as Handles: the slot says whether the object is still the same); the array is walked again only when
-// no kept box is alive, at most once a second, and once when the open menu changes (each menu builds its own box).
-bool SearchBoxFocused()
-{
-	if (!SearchPluginLoaded()) return false;
-	static std::vector<reflect::Handle> s_boxes;
-	static ULONGLONG                    s_scanned = 0;
-	static int                          s_scanMenu = -1;
+		// SearchLight types into a bar of its own (not a text box the array walk could find) and takes the window's keys itself, but
+		// the keys are still down for GetAsyncKeyState: a digit typed into the bar would assign the highlighted item to that slot, and
+		// a typed R, Z, C or F would press the wheel's virtual buttons. SearchLight says when a bar has the typing (MenuSearch_IsTyping,
+		// the SearchLight release after 1.2.1; an older one has no such export and the answer is no, as before).
+		bool SearchLightAnswers(const char* a_export)
+		{
+			const HMODULE m = GetModuleHandleW(L"MenuSearch.dll");
+			if (!m) return false;
+			const auto fn = reinterpret_cast<bool (*)()>(GetProcAddress(m, a_export));
+			return fn && fn();
+		}
 
-	bool alive = false, focused = false;
-	for (const auto& h : s_boxes) {
-		auto* o = reflect::Get(h);
-		if (!o) continue;
-		alive = true;
-		ui::Call c(o, L"HasKeyboardFocus");
-		if (c && c.RunGuarded() && c.Get<bool>("ReturnValue")) focused = true;
-	}
-	const int       menu = static_cast<int>(menus::Active());
-	const ULONGLONG now = GetTickCount64();
-	if (focused || (alive && menu == s_scanMenu) || now - s_scanned < 1000) return focused;
-	s_scanned = now;
-	s_scanMenu = menu;
+		bool SearchLightTyping() { return SearchLightAnswers("MenuSearch_IsTyping"); }
 
-	auto* arr = UE::FUObjectArray::GetSingleton();
-	if (!arr) return focused;
-	s_boxes.clear();
-	focused = false;
-	arr->LockInternalArray();
-	const std::int32_t n = arr->GetObjectArrayNum();
-	for (std::int32_t i = 0; i < n; ++i) {
-		auto* item = arr->IndexToObject(i);
-		if (!item || !item->object) continue;
-		auto* o = reinterpret_cast<UE::UObject*>(item->object);
-		if (!IsSearchBox(o)) continue;
-		s_boxes.push_back(reflect::Hold(o));
-		ui::Call c(o, L"HasKeyboardFocus");
-		if (c && c.RunGuarded() && c.Get<bool>("ReturnValue")) focused = true;
-	}
-	arr->UnlockInternalArray();
-	return focused;
-}
+		// the mouse is over a SearchLight bar: a click there is the bar's (it starts the typing), not a click on the wheel's last pointed slot
+		bool SearchLightBarUnderMouse() { return SearchLightAnswers("MenuSearch_CursorOverBar"); }
 
-// the mouse is over the wheel on screen (viewport units, as the widget is measured)
+		// a search box (the Inventory Search / Magic Search plugins') has the keyboard: digits are typing, not slot keys.
+		// The boxes found are kept (as Handles: the slot says whether the object is still the same); the array is walked again only when
+		// no kept box is alive, at most once a second, and once when the open menu changes (each menu builds its own box).
+		bool SearchBoxFocused()
+		{
+			if (SearchLightTyping()) return true;
+			if (!SearchPluginLoaded()) return false;
+			static std::vector<reflect::Handle> s_boxes;
+			static ULONGLONG                    s_scanned = 0;
+			static int                          s_scanMenu = -1;
+
+			bool alive = false, focused = false;
+			for (const auto& h : s_boxes) {
+				auto* o = reflect::Get(h);
+				if (!o) continue;
+				alive = true;
+				ui::Call c(o, L"HasKeyboardFocus");
+				if (c && c.RunGuarded() && c.Get<bool>("ReturnValue")) focused = true;
+			}
+			const int       menu = static_cast<int>(menus::Active());
+			const ULONGLONG now = GetTickCount64();
+			if (focused || (alive && menu == s_scanMenu) || now - s_scanned < 1000) return focused;
+			s_scanned = now;
+			s_scanMenu = menu;
+
+			auto* arr = UE::FUObjectArray::GetSingleton();
+			if (!arr) return focused;
+			s_boxes.clear();
+			focused = false;
+			arr->LockInternalArray();
+			const std::int32_t n = arr->GetObjectArrayNum();
+			for (std::int32_t i = 0; i < n; ++i) {
+				auto* item = arr->IndexToObject(i);
+				if (!item || !item->object) continue;
+				auto* o = reinterpret_cast<UE::UObject*>(item->object);
+				if (!IsSearchBox(o)) continue;
+				s_boxes.push_back(reflect::Hold(o));
+				ui::Call c(o, L"HasKeyboardFocus");
+				if (c && c.RunGuarded() && c.Get<bool>("ReturnValue")) focused = true;
+			}
+			arr->UnlockInternalArray();
+			return focused;
+		}
+
+		// the mouse is over the wheel on screen (viewport units, as the widget is measured)
 		// the mouse is reported in screen pixels, the widgets are measured in viewport units (pixels / the UI's DPI scale: the log
 		// showed the cursor at the exact middle of a 2560 x 1440 screen with the wheel's middle at (960, 540)); the scale comes from the
 		// game (GetViewportScale), failing that the engine's default rule of the window height over 1080, or the INI's own value
@@ -346,9 +364,10 @@ bool SearchBoxFocused()
 		// directions"):
 		//   use    - hold the wheel button until the radial is up, then the stick at the slot until it is pointed, then A
 		//   assign - (the panel opened with L3 if it was not up) the stick at the slot until pointed, then A, (L3 again)
+		//   close  - L3 held, which closes the assign panel in the Inventory / Magic menu (the Esc key: a virtual B did nothing there)
 		struct Script
 		{
-			enum Kind { kNone, kUse, kAssign, kClick } kind = kNone;
+			enum Kind { kNone, kUse, kAssign, kClick, kClose } kind = kNone;
 			int       slot = 0;      // 0..7
 			int       phase = 0;
 			bool      openedPanel = false;
@@ -387,6 +406,11 @@ bool SearchBoxFocused()
 			const auto stick = [&] { a_pad.sThumbRX = rx; a_pad.sThumbRY = ry; };
 			const bool pointed = quickkeys::PointedSlot() == g_script.slot + 1;
 			const auto menu = menus::Active();
+			if (g_script.kind == Script::kClose) {
+				a_pad.wButtons |= XINPUT_GAMEPAD_LEFT_THUMB;
+				if (elapsed >= 120) End("panel closed with the cancel key");
+				return g_script.kind != Script::kNone;
+			}
 			if (g_script.kind == Script::kClick) {   // a click is the A button on the slot the mouse already points (the game points by the mouse's angle, as by the stick's)
 				const bool open = menu == menus::Menu::kInventory || menu == menus::Menu::kMagic ? PanelUp(menu) : quickkeys::RadialOpen();
 				if (!open) {
@@ -599,10 +623,18 @@ bool SearchBoxFocused()
 			if (panel) {
 				press(k.x, XINPUT_GAMEPAD_X);
 				press(k.a, XINPUT_GAMEPAD_A);
-				press(k.b, XINPUT_GAMEPAD_B);
 				press(k.dpadLeft, XINPUT_GAMEPAD_DPAD_LEFT);
 				press(k.dpadRight, XINPUT_GAMEPAD_DPAD_RIGHT);
 			}
+		}
+		{   // the cancel key (Esc) with the assign panel up in the Inventory / Magic menu closes the panel: the game closes it on L3, a virtual B did nothing
+			static bool s_cancelPrev = false;
+			const bool  cancel = k.b > 0 && Down(k.b) && panel && !Typing();
+			if (cancel && !s_cancelPrev && g_script.kind == Script::kNone) {
+				g_script = { Script::kClose, 0, 0, false, GetTickCount64() };
+				logger::info("keyboard: cancel key in the {} with the panel up - closing the panel", menus::Name(context));
+			}
+			s_cancelPrev = cancel;
 		}
 		if (menus::AnyOpen() && !radial) press(k.select, XINPUT_GAMEPAD_BACK);
 		// the right stick: four keys, two together make a diagonal
@@ -643,7 +675,7 @@ bool SearchBoxFocused()
 			const auto menu = menus::Active();
 			const bool inMenu = menu == menus::Menu::kInventory || menu == menus::Menu::kMagic;
 			const bool where = inMenu ? PanelUp(menu) : quickkeys::RadialOpen();   // the assign panel, or the HUD radial
-			if (now && !s_lmb && g_script.kind == Script::kNone && where && !quickkeys::GameMessageUp()) {   // a click on a message of the game is the message's
+			if (now && !s_lmb && g_script.kind == Script::kNone && where && !quickkeys::GameMessageUp() && !SearchLightBarUnderMouse()) {   // a click on a message of the game is the message's
 				const int pointed = quickkeys::PointedSlot();   // 1..8, the slot the mouse (or the stick) points at now
 				if (pointed >= 1) {
 					g_script = { Script::kClick, pointed - 1, 0, false, GetTickCount64() };
