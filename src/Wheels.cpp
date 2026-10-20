@@ -12,6 +12,7 @@
 #include "Ui.h"
 
 #include <fstream>
+#include <set>
 #include <unordered_map>
 #include <sstream>
 
@@ -1065,6 +1066,107 @@ namespace wheels
 			return t == RE::FormType::AlchemyItem || t == RE::FormType::Ingredient;
 		}
 
+		// the repair hammer (form 0x0000000C, a Misc item): the game's own quick-key press does nothing for it (the owner's log, 2026-10-20: "unchanged 0.7 s after
+		// the game's key press ... nothing visible changed", IWP-011), so it is used from inside the Inventory menu once the radial has closed (HammerInvStart)
+		bool MiscTool(std::uint32_t a_id)
+		{
+			return a_id == 0x0000000C;
+		}
+
+		// A repair hammer is used from INSIDE the Inventory menu, as the game does (IWP-011): the EquipObject call made in plain gameplay opened the repair menu but left
+		// a stuck blurred screen (and, with no wheel, the game in menu mode). The Inventory is opened through the controller's own open-inventory input function
+		// (pressed, released 200 ms later: released in the same frame the player menu opened on its System page), the hammer is equipped once the Inventory is up,
+		// and the repair menu then sits over it; Esc returns to the Inventory and a second Esc to the game.
+		struct HammerInv
+		{
+			bool          on = false;
+			int           stage = 0;
+			ULONGLONG     at = 0;
+			std::uint32_t id = 0;
+			std::string   fn, rel;
+			bool          released = false;
+		} g_hi;
+
+		// the controller function that presses the open-inventory action ("OpenInventoryMenuInput_Pressed" in game 1.512.105.0); found once by name
+		std::string OpenInventoryFunction(UE::UObject* a_pc)
+		{
+			static std::string found;
+			static bool        looked = false;
+			if (looked) return found;
+			looked = true;
+			const auto lower = [](std::string a_s) { for (auto& c : a_s) c = static_cast<char>(std::tolower(static_cast<unsigned char>(c))); return a_s; };
+			for (UE::UStruct* st = a_pc ? static_cast<UE::UStruct*>(a_pc->GetClass()) : nullptr; st && found.empty(); st = st->superStruct) {
+				auto* f = *reinterpret_cast<UE::UField* const*>(&st->children);
+				for (int n = 0; f && n < 8000; ++n, f = f->next) {
+					if (pe::Utf8(f->GetClass()->GetFName().ToString()) != "Function") continue;
+					const std::string name = pe::Utf8(f->GetFName().ToString());
+					const std::string l = lower(name);
+					if (l.find("openinventory") != std::string::npos && l.ends_with("_pressed")) {
+						found = name;
+						break;
+					}
+				}
+			}
+			logger::info("wheels: the controller's open-inventory function: {}", found.empty() ? std::string("not found - hammers are not used from the wheel") : found);
+			return found;
+		}
+
+		bool HammerInvStart(std::uint32_t a_id)
+		{
+			if (g_hi.on) return true;
+			if (menus::AnyOpen()) {
+				logger::info("wheels: a menu is already open - the hammer is not used");
+				return false;
+			}
+			auto*             pc = ui::PlayerController();
+			const std::string fn = OpenInventoryFunction(pc);
+			if (!pc || fn.empty()) {
+				return false;
+			}
+			g_hi = {};
+			g_hi.fn = fn;
+			g_hi.rel = fn;
+			g_hi.rel.replace(g_hi.rel.size() - 8, 8, "_Released");
+			ui::Call press(pc, pe::Wide(fn).c_str());
+			if (!press || !press.RunGuarded()) {
+				logger::info("wheels: {} failed - the hammer is not used", fn);
+				return false;
+			}
+			g_hi.on = true;
+			g_hi.stage = 1;
+			g_hi.at = GetTickCount64();
+			g_hi.id = a_id;
+			logger::info("wheels: {} pressed - the hammer is used once the Inventory is up", fn);
+			return true;
+		}
+
+		void HammerInvTick()
+		{
+			if (!g_hi.on) return;
+			const ULONGLONG now = GetTickCount64();
+			if (g_hi.stage == 1) {
+				if (!g_hi.released && now - g_hi.at >= 200) {
+					g_hi.released = true;
+					if (auto* pc = ui::PlayerController()) {
+						ui::Call release(pc, pe::Wide(g_hi.rel).c_str());
+						if (release) release.RunGuarded();
+					}
+				}
+				if (menus::Active() == menus::Menu::kInventory) {
+					logger::info("wheels: the Inventory is up after {} ms", now - g_hi.at);
+					g_hi.stage = 2;
+					g_hi.at = now + 500;
+				} else if (now - g_hi.at > 3000) {
+					g_hi.on = false;
+					logger::info("wheels: the Inventory did not open within 3 s - the hammer is not used");
+				}
+			} else if (g_hi.stage == 2 && now >= g_hi.at) {
+				g_hi.on = false;
+				logger::info("wheels: {} used inside the Inventory through Actor::EquipObject", inventory::NameOf(g_hi.id));
+				inventory::EquipKeyed(g_hi.id);
+			}
+		}
+
 		void DriveUse()
 {
 			if (!g_use.on) {
@@ -1091,8 +1193,12 @@ namespace wheels
 					return;
 				}
 				g_use.waitClose = false;
-				g_use.verifyAt = now + 300ms;
-				inventory::EquipKeyed(g_use.id);
+				g_use.verifyAt = now + (MiscTool(g_use.id) ? 2500ms : 300ms);   // a hammer's menu opens a little later
+				if (MiscTool(g_use.id)) {
+					HammerInvStart(g_use.id);
+				} else {
+					inventory::EquipKeyed(g_use.id);
+				}
 				logger::info("wheels: USE Equipment slot {} ({}) - {}: used through Actor::EquipObject on the TES thread, the radial has closed", n, g_use.how, name);
 				return;
 			}
@@ -1106,7 +1212,7 @@ namespace wheels
 				g_lastUse = std::format("slot {}: {} {} ({} -> {})", n, name, st.worn ? "equipped at once" : "NOT worn after the equip", inventory::Describe(g_use.before),
 					inventory::Describe(st));
 				logger::info("wheels: USE result slot {} ({}) - {}: {} -> {} {} ms after the press - {}", n, g_use.how, name, inventory::Describe(g_use.before),
-					inventory::Describe(st), ms, st.worn ? "equipped at once through Actor::EquipObject" : "NOT worn: the equip did not take");
+					inventory::Describe(st), ms, st.worn ? "equipped at once through Actor::EquipObject" : MiscTool(g_use.id) ? (menus::AnyOpen() ? "a menu is open (the hammer's repair menu?)" : "NO menu opened") : "NOT worn: the equip did not take");
 				return;
 			}
 			if (!g_use.pressed) {
@@ -1545,6 +1651,7 @@ namespace wheels
 		CheckHud();
 		AssertMagic();
 		DriveUse();
+		HammerInvTick();
 		if (!g_pending.on) {
 			return;
 		}
@@ -1693,8 +1800,8 @@ logger::info("wheels: the {} wheel's own button - it is the active wheel", Name(
 		// thread (lock argument false). The game's own quick-key press (Quick<N>Input_Pressed / _Released) equipped nothing
 		// in any of the 9 RB / A uses of 2026-10-01 02:32-02:37 ("unchanged 0.7 s after the game's key press ... FALLBACK"),
 		// and the EquipObject fallback worked every time ("(x1, worn)") - so the press and its 0.7 s wait are gone for it.
-		if (Equippable(id) ||Consumable(id)) {
-			if (g_use.before.worn) {
+		if (Equippable(id) || Consumable(id) || MiscTool(id)) {
+			if (g_use.before.worn && !MiscTool(id)) {
 				// what the game's own quick key does with an item already worn (unequip it, or nothing) is not known from the
 				// code or the game - the key press itself did nothing at all - so nothing is done, and said
 				// choosing the slot of an item that is already on takes it off
