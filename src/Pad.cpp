@@ -881,6 +881,7 @@ namespace pad
 						g_leftToGame = true;
 						logger::info("pad: the radial stays open after {} B presses - left as it is", g_forceTries - 1);
 					} else {
+						keyboard::CancelNativeWheel();   // a wheel opened with the native R key ignores a lone B: it closes as Esc does (B and the key-up of R), IWP-011
 						g_bPulse = 2;   // short: the game starts closing on the first read and gives the controls back at once, a longer B reached it as crouch (2026-10-18)
 						g_forceCloseAt = GetTickCount64() + 400;
 						logger::info("pad: the radial is still open 400 ms after a use on the Equipment wheel - closed with B, so the item is used");

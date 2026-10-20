@@ -726,4 +726,9 @@ namespace keyboard
 	{
 		return g_script.kind != Script::kNone;
 	}
+
+	void CancelNativeWheel()
+	{
+		if (g_nativeWheelHeld) g_nativeWheelCancel = true;
+	}
 }

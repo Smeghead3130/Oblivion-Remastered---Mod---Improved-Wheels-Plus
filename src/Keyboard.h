@@ -26,4 +26,6 @@ namespace keyboard
 	bool ScriptRunning();
 	// a slot key's use script (wheel button, stick, A) is running or has just ended: its short hold of the wheel button is a quick use, never a tap that keeps the wheel open
 	bool UseScriptRecent();
+	// the radial opened with the native R key closes the way Esc or a second R closes it (B and the key-up of the held R); nothing when R is not held
+	void CancelNativeWheel();
 }
