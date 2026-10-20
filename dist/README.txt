@@ -1,6 +1,6 @@
 Improved Wheel - Keyboard and Better Controller Support
 =======================================================
-Version 1.2.0
+Version 1.3.0
 
 A modified build of Improved Wheel Menu (Oblivion Remastered) by ApocryphaRealm (GPL-3.0). It replaces the original
 ImprovedWheelMenu.dll and keeps its file and setting names, so install it instead of the original, not beside it.
@@ -21,7 +21,8 @@ ADDED IN THIS BUILD
   * Hold X (0.6 s) on a pointed slot of the assign panel to clear the whole slot; L3 opens the assign panel.
   * Select (uFavouriteButton) favourites the highlighted item or spell; LB (uWheelButton) opens the wheel; the game's Y sorting is kept.
   * Spells you made at the Altar of Spellmaking can go on the Magic wheel, also when two share a name.
-  * "2/5" slot counters on the Magic wheel too, and the wheel's centre names the pointed spell or item (also names you typed).
+  * Slot counters under every slot of the Equipment, Magic and Ammo wheels ("2/3": the entry shown out of the entries the slot holds, "0/0" when empty; bShowSlotCapacity=1 for "2/5"), and the wheel's centre names the pointed spell or item (also names you typed).
+  * A repair hammer on the Equipment wheel opens the Inventory and then the repair menu (the game needs the Inventory open for it); Esc leaves the repair menu, a second Esc the Inventory.
   * The whole wheel from the keyboard: every key of the [Keyboard] section is rebindable; number keys 1-8 and Numpad 1-8 are slot keys.
   * Buttons that open a wheel directly (uEquipmentWheelButton, uMagicWheelButton, uAmmoWheelButton), the radial's animation speed
     (uAnimSpeedPercent), and where the ammo wheel opens (uPosition).
