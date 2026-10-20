@@ -408,7 +408,8 @@ namespace keyboard
 			const auto menu = menus::Active();
 			if (g_script.kind == Script::kClose) {
 				a_pad.wButtons |= XINPUT_GAMEPAD_LEFT_THUMB;
-				if (elapsed >= 120) End("panel closed with the cancel key");
+				++g_script.phase;   // reads that carried the L3: the game reads the pad slowly in a menu, and a press carried by fewer than three reads is often missed (the owner, 2026-10-21: Esc took ten presses)
+				if ((elapsed >= 120 && g_script.phase >= 3) || elapsed > 500) End("panel closed with the cancel key");
 				return g_script.kind != Script::kNone;
 			}
 			if (g_script.kind == Script::kClick) {   // a click is the A button on the slot the mouse already points (the game points by the mouse's angle, as by the stick's)
@@ -628,11 +629,29 @@ namespace keyboard
 			}
 		}
 		{   // the cancel key (Esc) with the assign panel up in the Inventory / Magic menu closes the panel: the game closes it on L3, a virtual B did nothing
-			static bool s_cancelPrev = false;
-			const bool  cancel = k.b > 0 && Down(k.b) && panel && !Typing();
+			static bool      s_cancelPrev = false;
+			static ULONGLONG s_retryAt = 0;   // the panel is looked at again then: still up after the close script, the game missed it
+			static int       s_tries = 0;
+			const bool       cancel = k.b > 0 && Down(k.b) && panel && !Typing();
+			const ULONGLONG  now = GetTickCount64();
+			if (!panel) {
+				s_retryAt = 0;
+				s_tries = 0;
+			}
 			if (cancel && !s_cancelPrev && g_script.kind == Script::kNone) {
-				g_script = { Script::kClose, 0, 0, false, GetTickCount64() };
+				g_script = { Script::kClose, 0, 0, false, now };
+				s_tries = 1;
+				s_retryAt = now + 600;
 				logger::info("keyboard: cancel key in the {} with the panel up - closing the panel", menus::Name(context));
+			} else if (s_retryAt && now >= s_retryAt) {
+				if (panel && g_script.kind == Script::kNone && s_tries < 3) {
+					g_script = { Script::kClose, 0, 0, false, now };
+					++s_tries;
+					s_retryAt = now + 600;
+					logger::info("keyboard: the panel is still up {} ms after the cancel key - closing it again (try {} of 3)", 600, s_tries);   // the game often missed the first L3 (the owner, 2026-10-21: ten Esc presses)
+				} else {
+					s_retryAt = 0;
+				}
 			}
 			s_cancelPrev = cancel;
 		}
