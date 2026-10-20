@@ -3,6 +3,13 @@
 Written as changes happen, not reconstructed afterwards (rule 61). Started 2026-09-29; the history before this file is
 in `git log`. A version number is issued by the version gate only once a build is seen working in game (rule 48).
 
+## 1.1.7 - 2026-10-20 - Improved Wheels Plus
+
+### Fixed
+- Using a slot with the number keys 1-8 (or Numpad 1-8) no longer switches the character from walk back to run when Caps Lock had set walk mode. The keys fed the game a controller wheel button and right stick, and the game dropped the walk toggle on that input. With R as the wheel key (the default) a slot key now opens the wheel with the R key, points by moving the mouse cursor to the slot's direction and presses only A, as R, pointing and a click do; the cursor is put back where it was. With another wheel key set in the ini the old controller-style script is still used.
+- Esc now closes the wheel opened with R, as a second R does (a lone virtual B left it open).
+- No change to the default settings or the controls.
+
 ## 1.1.6 - 2026-10-19 - Improved Wheels Plus
 
 ### Fixed

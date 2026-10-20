@@ -1,6 +1,6 @@
 Improved Wheel - Keyboard and Better Controller Support
 =======================================================
-Version 1.1.6
+Version 1.1.7
 
 A modified build of Improved Wheel Menu (Oblivion Remastered) by ApocryphaRealm (GPL-3.0). It replaces the original
 ImprovedWheelMenu.dll and keeps its file and setting names, so install it instead of the original, not beside it.
@@ -79,6 +79,7 @@ KNOWN ISSUES
 ------------
   * There is no settings page; the INI holds the few settings there are.
   * Existing ini files retain their configured bindings; update [Keyboard] for the new defaults.
+  * The number keys 1-8 keep your Caps Lock walk mode only while the wheel key is R (the default). With another wheel key set in [Keyboard] sLB they use the older controller-style script, which switches walk back to run.
 
 BEFORE YOU INSTALL: CLEAR YOUR EXISTING WHEEL
 ---------------------------------------------
