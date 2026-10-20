@@ -35,6 +35,7 @@ ADDED IN THIS BUILD
   * bChooseOnClose (on by default): closing the wheel by letting go of its button, or pressing it again, uses the slot the stick points at, on whichever wheel is up -
     point and close, no A or RB needed. B still closes without using anything, and so does letting go with the stick back at rest (bCentreRestSnap).
   * bRememberWheel (on): the radial opens on the wheel you left it on; 0 = always on the Equipment wheel.
+  * bShowSlotCapacity (off): the counter under a slot reads the entry shown out of the entries the slot holds ("2/3", "0/0" when empty); 1 = out of the capacity (uEntriesPerSlot), "2/5", "0/5".
   * A left mouse click on the radial or the assign panel is the A button on the slot the mouse points at. A potion, poison or ingredient is used at
     once, however you choose it. Choosing the slot of a weapon, armour or clothing that is already worn takes it off.
   * The Ammo wheel is laid out the same on the shortcut and on the radial (LB, then D-pad right), and shows the pointed arrows' name inside the wheel.

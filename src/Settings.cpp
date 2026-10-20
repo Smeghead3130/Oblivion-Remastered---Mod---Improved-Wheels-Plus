@@ -82,6 +82,7 @@ namespace settings
 			v.stayOpenAfterUse = ReadInt(ini, L"Wheel", L"bStayOpenAfterUse", v.stayOpenAfterUse ? 1 : 0, 0, 1) != 0;
 			v.armourOnWheel = ReadInt(ini, L"Wheel", L"bArmourOnWheel", v.armourOnWheel ? 1 : 0, 0, 1) != 0;
 			v.rememberWheel = ReadInt(ini, L"Wheel", L"bRememberWheel", v.rememberWheel ? 1 : 0, 0, 1) != 0;
+			v.showSlotCapacity = ReadInt(ini, L"Wheel", L"bShowSlotCapacity", v.showSlotCapacity ? 1 : 0, 0, 1) != 0;
 			v.chooseOnClose = ReadInt(ini, L"Wheel", L"bChooseOnClose", v.chooseOnClose ? 1 : 0, 0, 1) != 0;
 			v.centreRestSnap = ReadInt(ini, L"Wheel", L"bCentreRestSnap", v.centreRestSnap, 0, 1) != 0;
 			v.restSnapMs = ReadInt(ini, L"Wheel", L"uRestSnapMs", v.restSnapMs, 30, 1000);

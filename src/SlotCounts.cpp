@@ -174,15 +174,17 @@ namespace slotcounts
 				g_cw = w, g_ch = h, g_centreN = n;
 			}
 		}
-		// what: the shown entry's place out of the slot's places, "2/5" - the owner, 2026-10-01: "whether I'm on one out of
-		// five, two out of five ..." - and "0/5" for an empty slot ("slot number 3 and 1, which are actually empty, have no
-		// indicator at all of like zero out of five"); "-/5" when the slot's key holds none of its entries. Every label gets
-		// text: an empty string left two labels showing the widget's placeholder "Text Block" (slots 7 and 8).
+		// what: the shown entry's place out of the entries the slot holds, "2/3" (a reader's idea, 2026-10-20: "if I see x/3 I know
+		// there's space for two more") - the owner, 2026-10-01: "whether I'm on one out of five, two out of five ..." - and "0/0"
+		// for an empty slot ("slot number 3 and 1, which are actually empty, have no indicator at all of like zero out of five");
+		// "-/3" when the slot's key holds none of its entries. INI [Wheel] bShowSlotCapacity=1 reads the capacity instead ("2/5",
+		// "0/5", "-/5"). Every label gets text: an empty string left two labels showing the widget's placeholder "Text Block".
 		const auto counts = wheels::SlotCounts(a_wheel);
 		const int  cap = wheels::SlotCap();
 		for (int k = 0; k < 8; ++k) {
 			const auto& c = counts[static_cast<std::size_t>(k)];
-			const std::string text = c.count == 0 ? std::format("0/{}", cap) : c.position > 0 ? std::format("{}/{}", c.position, cap) : std::format("-/{}", cap);
+			const int          total = settings::Get().showSlotCapacity ? cap : c.count;
+			const std::string text = c.count == 0 ? std::format("0/{}", total) : c.position > 0 ? std::format("{}/{}", c.position, total) : std::format("-/{}", total);
 			if (text != g_text[static_cast<std::size_t>(k)]) {
 				if (auto* label = reflect::Get(g_label[static_cast<std::size_t>(k)])) SetText(label, text);
 				g_text[static_cast<std::size_t>(k)] = text;
