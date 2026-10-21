@@ -2,6 +2,8 @@
 // (no game needed). Exit code 0 = all passed.
 
 #include "TextUtil.h"
+#include "WheelStorage.h"
+#include <sstream>
 
 #include <cstdio>
 
@@ -56,6 +58,20 @@ int main()
 	Check(IconAssetPath("a/b.c/Stem.dds") == "/Game/Art/UI/Icons/Dynamic_Icons/menus/icons/a/b.c/T_stem.T_stem", "IconAssetPath: only the last dot is the extension");
 	Check(IconAssetPath("").empty(), "IconAssetPath: empty path");
 	Check(IconAssetPath("Weapons\\").empty(), "IconAssetPath: folder only");
+
+	// Assignment ownership: accept only this format and this exact character.
+	{
+		std::ostringstream saved;
+		wheelstorage::WriteHeader(saved, "Hero #1234");
+		std::istringstream own(saved.str());
+		Check(wheelstorage::ReadHeader(own, "Hero #1234"), "wheel storage: own header round trip");
+		std::istringstream otherCharacter(saved.str());
+		Check(!wheelstorage::ReadHeader(otherCharacter, "Hero #5678"), "wheel storage: other character rejected");
+		for (const char* foreign : { "", "# Improved Wheel Menu - the wheels of Hero #1234\n", "Equipment 1 active=1 0x00000123\n", "# ImprovedWheelsPlus assignments v2\n# Character: Hero #1234\n", "# ImprovedWheelsPlus assignments v1\n" }) {
+			std::istringstream input(foreign);
+			Check(!wheelstorage::ReadHeader(input, "Hero #1234"), "wheel storage: foreign, unsupported or incomplete header rejected");
+		}
+	}
 
 	std::printf("%d checks, %d failed\n", g_run, g_failed);
 	return g_failed == 0 ? 0 : 1;
