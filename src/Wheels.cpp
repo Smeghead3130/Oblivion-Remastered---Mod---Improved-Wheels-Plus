@@ -379,6 +379,12 @@ namespace wheels
 				g_initializeEmpty = false;
 				Save();   // record an empty per-character setup; later loads preserve deliberate assignments
 				logger::info("wheels: first-use initialization cleared all native item slots; empty wheel setup saved");
+				// the native spell hotkeys live in the same eight lists and no item key reaches them: the game's own clear, on the TES thread
+				if (testhread::Installed()) {
+					testhread::Post([] { inventory::ClearAllNativeKeys(); });
+				} else {
+					logger::warn("wheels: first-use initialization left the native spell hotkeys (the TES thread queue is not installed)");
+				}
 			}
 			if (!g_sanitized && GetTickCount64() >= g_sanitizeAt && inventory::Ready() && rows::PlayerSpellCount() > 0 &&
 				!AssignPending()) {

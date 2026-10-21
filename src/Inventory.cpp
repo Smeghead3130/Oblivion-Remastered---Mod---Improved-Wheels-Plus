@@ -258,6 +258,64 @@ namespace inventory
 		}
 	}
 
+	namespace
+	{
+		// the first bytes of the two game routines below, game 1.512.105.0 (read from the exe 2026-10-21): the call is made only when
+		// both Address Library ids still land on them
+		constexpr std::uint8_t kRemoveItemKeyHead[] = { 0x40, 0x55, 0x41, 0x56, 0x41, 0x57, 0x48, 0x83, 0xEC, 0x30, 0x48, 0x8B, 0x01, 0x41, 0x8B, 0xE8, 0x4C, 0x8B, 0xFA, 0x4C, 0x8B, 0xF1 };
+		constexpr std::uint8_t kClearAllHead[] = { 0x48, 0x89, 0x5C, 0x24, 0x08, 0x48, 0x89, 0x6C, 0x24, 0x10, 0x48, 0x89, 0x74, 0x24, 0x18, 0x57, 0x48, 0x83, 0xEC, 0x20, 0x48, 0x8D, 0x1D };
+
+		template <std::size_t N>
+		bool HeadIs(std::uintptr_t a_address, const std::uint8_t (&a_bytes)[N])
+		{
+			return a_address && std::memcmp(reinterpret_cast<const void*>(a_address), a_bytes, N) == 0;
+		}
+	}
+
+	// The game's own way (docs/reverse-engineering/native-hotkey-routines.md, proven in game 2026-10-21): the item-key removal its hotkey
+	// setter uses for every keyed item (id 407660, RVA 0x66471E0), then the clear-all of the eight hotkey lists (id 409811, RVA 0x6725EE0,
+	// called by the world unload). The lists hold the spells too, which no item key reaches. TES thread only.
+	bool ClearAllNativeKeys()
+	{
+		static REL::Relocation<void (*)(RE::InventoryChanges*, RE::TESBoundObject*, int)> removeItemKey{ REL::ID(407660) };
+		static REL::Relocation<void (*)()>                                                  clearAll{ REL::ID(409811) };
+		if (!HeadIs(removeItemKey.address(), kRemoveItemKeyHead) || !HeadIs(clearAll.address(), kClearAllHead)) {
+			logger::error("native hotkeys: the game's clear routines are not where this build expects them - nothing cleared");
+			return false;
+		}
+		auto* player = RE::PlayerCharacter::GetSingleton();
+		auto* extra = player ? player->extra.GetExtraData<RE::ExtraContainerChanges>() : nullptr;
+		auto* changes = extra ? extra->changes : nullptr;
+		if (!changes || !changes->list) {
+			logger::warn("native hotkeys: the player's items cannot be read yet - nothing cleared");
+			return false;
+		}
+		int removed = 0;
+		for (int pass = 0; pass < 3; ++pass) {   // a second stack of one item can carry the same key
+			std::vector<std::pair<RE::TESBoundObject*, int>> keyed;
+			for (RE::ItemChange* item : *changes->list) {
+				if (!item || !item->object || !item->extraData) {
+					continue;
+				}
+				for (RE::ExtraDataList* xl : *item->extraData) {
+					if (auto* x = KeyExtra(xl); x && KeyOf(x) < kSlots) {
+						keyed.emplace_back(item->object, KeyOf(x));
+					}
+				}
+			}
+			if (keyed.empty()) {
+				break;
+			}
+			for (const auto& [object, key] : keyed) {
+				removeItemKey(changes, object, key);
+				++removed;
+			}
+		}
+		clearAll();
+		logger::info("native hotkeys: cleared through the game's own routines ({} item key{} removed, all eight hotkey lists emptied)", removed, removed == 1 ? "" : "s");
+		return true;
+	}
+
 	bool SetKey(std::uint32_t a_formID, int a_key)
 	{
 		if (a_key < 0 || a_key >= kSlots) {
