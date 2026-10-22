@@ -15,6 +15,9 @@ in `git log`. A version number is issued by the version gate only once a build i
 - Wheel overlays, slot counters and the center name step aside while a game message is up.
 - Equipment title color uses a text comparison instead of comparing string pointers.
 
+### Removed
+- Development-only radial measurements, self-check file output, widget-tree dump helper and TestBench input-driving integration.
+
 ### Minor issue
 - F6/F7/F8 can still reset walking to running. R and direct 1-8 quick use preserve walking.
 

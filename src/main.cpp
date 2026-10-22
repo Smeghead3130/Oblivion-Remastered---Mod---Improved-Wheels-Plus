@@ -8,7 +8,6 @@
 #include "Pad.h"
 #include "QuickKeys.h"
 #include "Rows.h"
-#include "Tool.h"
 #include "Settings.h"
 #include "TesThread.h"
 #include "Wheels.h"
@@ -21,31 +20,6 @@ namespace
 		// the 2026-09-26 note had it starting at the top-left)
 		static constexpr const char* kWords[9] = { "none", "top", "top-right", "right", "bottom-right", "bottom", "bottom-left", "left", "top-left" };
 		return a_slot >= 0 && a_slot <= 8 ? kWords[a_slot] : "none";
-	}
-
-	// The plain-text self-check beside the log: what installed, what fired last (memory: guards-and-a-selfcheck-
-	// report-in-every-build). Rewritten on every event, so a test can read it without the log.
-	void WriteSelfCheck()
-	{
-		if (settings::Get().logLevel > 2) return;   // a diagnostic file: only with uLogLevel 2 or lower
-const auto s = quickkeys::GetStatus();
-		const auto p = pad::GetStatus();
-		const auto path = settings::PluginFolder() / L"ImprovedWheelMenu.selfcheck.txt";
-		std::string text = std::format(
-			"Improved Wheel Menu {} self-check\n"
-			"widget class found: {}\nview model found: {}\nquick keys watch: {}\n"
-			"radial open now: {}\nmenu panel open now: {}\npointed slot: {} ({})\nlast chosen slot: {} ({})\nopens this session: {}\n"
-			"controller rules: {} (reads {}, rewritten {}, chained after {})\nmenu now: {}\nactive wheel: {}\nmenu rows: {}\nwheels: {}\ntes thread queue: {}\nammo wheel Controls row: {} (button {})\nproblem: {}\n",
-			IWM_VERSION, s.widgetClassFound ? "yes" : "no", s.viewModelFound ? "yes" : "no", s.hookInstalled ? "installed" : "NOT installed",
-			s.open ? "yes" : "no", s.panelOpen ? "yes" : "no", s.pointedSlot, SlotWord(s.pointedSlot), s.lastChosenSlot, SlotWord(s.lastChosenSlot), s.opens,
-			p.installed ? "installed" : "NOT installed", p.reads, p.rewritten, p.previousTarget.empty() ? "-" : p.previousTarget,
-			menus::Name(menus::Active()), wheels::Name(wheels::Active()), rows::Status(), wheels::Status(), testhread::Installed() ? "installed" : "NOT installed",
-			controls::GetStatus().rowAdded ? "added" : "not added", controls::GetStatus().boundKey.empty() ? "-" : controls::GetStatus().boundKey, s.problem.empty() ? "none" : s.problem);
-		FILE* f = nullptr;
-		if (_wfopen_s(&f, path.c_str(), L"wb") == 0 && f) {
-			std::fwrite(text.data(), 1, text.size(), f);
-			std::fclose(f);
-		}
 	}
 
 	void OnQuickKeys(quickkeys::Event a_event, int a_slot)
@@ -74,7 +48,6 @@ const auto s = quickkeys::GetStatus();
 			wheels::PanelHidden();
 			break;
 		}
-		WriteSelfCheck();
 	}
 
 	void OnMessage(OBSE::MessagingInterface::Message* a_msg)
@@ -87,11 +60,8 @@ const auto s = quickkeys::GetStatus();
 		// menu the first time it opens). They are looked for on the GAME thread, from the controller read, about
 		// every 200 ms - never from a thread of our own (a start-up crashed in UObjectArray, 2026-09-29).
 		pad::SetFrameCallback([] {
-			tool::Pump();
 			favourites::Tick();   // the inventory's favourites column (every 100 ms while the inventory is open)
 			static auto next = std::chrono::steady_clock::now();
-			static bool reported = false;
-			static bool toolRegistered = false;
 			static bool tesThreadTried = false;
 			const auto now = std::chrono::steady_clock::now();
 			if (now < next) {
@@ -102,9 +72,6 @@ const auto s = quickkeys::GetStatus();
 			menus::Tick();
 			rows::Tick();
 			controls::Tick();   // the ammo wheel's Controls-page row and its button
-			if (!toolRegistered) {
-				toolRegistered = tool::Register();
-			}
 			if (!tesThreadTried) {
 				tesThreadTried = true;   // once: the ammo wheel's equips run on the TES thread (TesThread.h)
 				if (!testhread::Install()) {
@@ -113,13 +80,8 @@ const auto s = quickkeys::GetStatus();
 					testhread::SetPerPass(&inventory::SweepNativeSpellKeys);   // native spell hotkeys stay empty (IWP-013)
 				}
 			}
-			if (!reported && quickkeys::GetStatus().hookInstalled) {
-				reported = true;
-				WriteSelfCheck();
-			}
 		});
 		pad::Install();
-		WriteSelfCheck();
 	}
 }
 

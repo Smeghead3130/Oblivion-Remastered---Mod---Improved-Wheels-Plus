@@ -13,7 +13,6 @@
 
 #include <Xinput.h>   // types and constants only - nothing is linked or loaded
 
-#include <deque>
 #include <numbers>
 
 namespace pad
@@ -33,7 +32,6 @@ namespace pad
 
 		XInputGetState_t g_previous = nullptr;    // what the game's import pointed at before us (Steam's, or AMF's gate)
 		std::atomic<bool> g_installed{ false };
-		std::atomic<std::uint64_t> g_reads{ 0 }, g_rewritten{ 0 };
 		std::string g_previousTarget;
 		std::atomic<FrameCallback> g_frameCallback{ nullptr };
 
@@ -42,56 +40,6 @@ namespace pad
 		// ran the assign there) - it is passed straight through, untouched, so every rule and every inventory change
 		// stays on the game thread.
 		DWORD g_gameThread = 0;
-		std::atomic<std::uint64_t> g_otherThreadReads{ 0 };
-		// what one HUD radial session saw (2026-09-30: LT / RT never cycled, the rest snap never fired, and the owner
-		// reported pointing alone selecting - one summary line per session says whether our thread saw the triggers and
-		// the stick at all, and how many reads went by on other threads that the rules never touch)
-		std::atomic<bool>          g_diagOpen{ false };
-		std::atomic<std::uint64_t> g_diagOther{ 0 };
-		std::uint64_t              g_diagStoodDown = 0;   // radial reads skipped because AMF's window or Tween Menu said it was open
-		struct RadialDiag
-		{
-			std::uint64_t reads = 0;
-			BYTE          maxLT = 0, maxRT = 0;
-			double        maxRight = 0, maxLeft = 0;
-			int           ltEdges = 0, rtEdges = 0, restSnaps = 0, pointedEvents = 0, lastPointed = -2;
-			Clock::time_point opened{};
-		} g_diag;
-
-		// rule 64: presses queued by the iwm.pad TestBench tool, laid over the real pad on the game thread
-		std::mutex        g_injectLock;
-		std::deque<Step>  g_steps;
-		bool              g_stepRunning = false;
-		Clock::time_point g_stepUntil{};
-		Step              g_step{};
-
-		// applies the queued step (if any) to this read; true when a step is running
-		bool Inject(XINPUT_GAMEPAD& a_pad)
-		{
-			std::scoped_lock l(g_injectLock);
-			const auto now = Clock::now();
-			if (g_stepRunning && now >= g_stepUntil) {
-				g_stepRunning = false;
-			}
-			if (!g_stepRunning && !g_steps.empty()) {
-				g_step = g_steps.front();
-				g_steps.pop_front();
-				g_stepRunning = true;
-				g_stepUntil = now + std::chrono::milliseconds(std::max(1, g_step.ms));
-			}
-			if (!g_stepRunning) {
-				return false;
-			}
-			a_pad.wButtons |= g_step.buttons;
-			a_pad.bLeftTrigger = std::max(a_pad.bLeftTrigger, g_step.lt);
-			a_pad.bRightTrigger = std::max(a_pad.bRightTrigger, g_step.rt);
-			if (g_step.rx || g_step.ry) {
-				a_pad.sThumbRX = g_step.rx;
-				a_pad.sThumbRY = g_step.ry;
-			}
-			return true;
-		}
-
 		// ---- state, touched only inside the read (the game thread) ----
 		WORD   g_prevRaw = 0;
 		BYTE   g_prevLT = 0, g_prevRT = 0;
@@ -214,7 +162,6 @@ namespace pad
 					if (quickkeys::PointedSlot() >= 1) {
 						logger::info("pad: the right stick came back to rest - the wheel points at no slot (centre rest snap)");
 						quickkeys::ClearPointer();   // the choice AND the wheel's own highlight
-						++g_diag.restSnaps;
 						g_snapped = true;
 						g_unreported = 0;
 					}
@@ -492,7 +439,6 @@ namespace pad
 
 			const auto now = Clock::now();
 			if (AmfMenuOpen() || TweenMenuOpen()) {
-				if (quickkeys::RadialOpen()) ++g_diagStoodDown;   // counted in the radial session's summary
 				// the framework's window (or Tween Menu's menu) has the pad: no wheel rule runs, the read goes on untouched (its gate hides it
 				// from the game); an open ammo wheel closes, a latched wheel lets go
 				WORD untouched = raw;
@@ -502,37 +448,6 @@ namespace pad
 				g_pendingLatch = false;
 				g_suppressDown = false;
 				return;
-			}
-			// the radial session's measurements (diagnostics only - nothing here changes the read)
-			{
-				const bool open = quickkeys::RadialOpen();
-				if (open && !g_diagOpen.load(std::memory_order_relaxed)) {
-					g_diag = {};
-					g_diag.opened = now;
-					g_diagOther.store(0, std::memory_order_relaxed);
-					g_diagStoodDown = 0;
-					g_diagOpen.store(true, std::memory_order_relaxed);
-				}
-				if (open) {
-					++g_diag.reads;
-					g_diag.maxLT = std::max(g_diag.maxLT, a_pad.bLeftTrigger);
-					g_diag.maxRT = std::max(g_diag.maxRT, a_pad.bRightTrigger);
-					g_diag.maxRight = std::max(g_diag.maxRight, std::hypot(a_pad.sThumbRX / 32767.0, a_pad.sThumbRY / 32767.0));
-					g_diag.maxLeft = std::max(g_diag.maxLeft, std::hypot(a_pad.sThumbLX / 32767.0, a_pad.sThumbLY / 32767.0));
-					g_diag.ltEdges += ltPressed ? 1 : 0;
-					g_diag.rtEdges += rtPressed ? 1 : 0;
-					const int pointed = quickkeys::PointedSlot();
-					if (pointed != g_diag.lastPointed) {
-						g_diag.lastPointed = pointed;
-						++g_diag.pointedEvents;
-					}
-				} else if (g_diagOpen.load(std::memory_order_relaxed)) {
-					g_diagOpen.store(false, std::memory_order_relaxed);
-					const auto ms = std::chrono::duration_cast<std::chrono::milliseconds>(now - g_diag.opened).count();
-					logger::info("pad: radial session {} ms - {} read(s) here, {} on other threads (untouched); max LT {} RT {}, right stick {:.2f}, left stick {:.2f}; LT / RT presses seen {} / {}; pointed-slot changes {}; rest snaps {} (bCentreRestSnap {}); reads stood down for AMF / Tween Menu {}",
-						ms, g_diag.reads, g_diagOther.load(std::memory_order_relaxed), g_diag.maxLT, g_diag.maxRT, g_diag.maxRight, g_diag.maxLeft,
-						g_diag.ltEdges, g_diag.rtEdges, g_diag.pointedEvents, g_diag.restSnaps, settings::Get().centreRestSnap, g_diagStoodDown);
-				}
 			}
 			const menus::Menu menu = menus::Active();
 			if (menu != g_prevMenu) {
@@ -933,12 +848,6 @@ namespace pad
 		DWORD WINAPI Chained(DWORD a_user, XINPUT_STATE* a_state)
 		{
 			if (GetCurrentThreadId() != g_gameThread) {
-				if (g_diagOpen.load(std::memory_order_relaxed)) {
-					g_diagOther.fetch_add(1, std::memory_order_relaxed);
-				}
-				if (g_otherThreadReads.fetch_add(1, std::memory_order_relaxed) == 0) {
-					logger::info("pad: thread {} also reads the controller through the game's import - passed through untouched", GetCurrentThreadId());
-				}
 				return g_previous ? g_previous(a_user, a_state) : ERROR_DEVICE_NOT_CONNECTED;
 			}
 			if (a_user == 0) {
@@ -963,9 +872,8 @@ namespace pad
 			if (rc != ERROR_SUCCESS) {
 				XINPUT_STATE blank{};
 				XINPUT_GAMEPAD probe{};
-				const bool step = Inject(probe);
 				const bool keys = keyboard::Apply(probe);   // the keyboard as a virtual controller (INI [Keyboard])
-				if (!step && !keys && !keyboard::PresentWhenNoPad()) {
+				if (!keys && !keyboard::PresentWhenNoPad()) {
 					return rc;
 				}
 				static bool s_said = false;
@@ -973,22 +881,15 @@ namespace pad
 					s_said = true;
 					logger::info("pad: no controller is connected - the game is handed an idle pad so the keyboard rules run every frame (INI [Keyboard] bVirtualPadWhenNone)");
 				}
-				*a_state = blank;   // no pad connected, but a test step or a bound key is active: hand over that alone
+				*a_state = blank;   // no pad connected: hand over the keyboard state alone
 				a_state->Gamepad = probe;
 				rc = ERROR_SUCCESS;
 			} else {
-				Inject(a_state->Gamepad);
 				keyboard::Apply(a_state->Gamepad);
 			}
-			g_reads.fetch_add(1, std::memory_order_relaxed);
-			const WORD rawButtons = a_state->Gamepad.wButtons;
-			const BYTE rawLT = a_state->Gamepad.bLeftTrigger, rawRT = a_state->Gamepad.bRightTrigger;
 			const SHORT rawRX = a_state->Gamepad.sThumbRX, rawRY = a_state->Gamepad.sThumbRY;
 			Rewrite(a_state->Gamepad);
 			const auto& g = a_state->Gamepad;
-			if (g.wButtons != rawButtons || g.bLeftTrigger != rawLT || g.bRightTrigger != rawRT || g.sThumbRX != rawRX || g.sThumbRY != rawRY) {
-				g_rewritten.fetch_add(1, std::memory_order_relaxed);
-			}
 			// the game only processes a state whose packet number moved: move it whenever what we hand over changes
 			if (g.wButtons != g_prevOutButtons || g.bLeftTrigger != g_prevOutLT || g.bRightTrigger != g_prevOutRT || g.sThumbRX != rawRX || g.sThumbRY != rawRY) {
 				++g_packetOffset;
@@ -1073,23 +974,9 @@ namespace pad
 		return false;
 	}
 
-	void Queue(const std::vector<Step>& a_steps)
-	{
-		std::scoped_lock l(g_injectLock);
-		for (const auto& s : a_steps) {
-			g_steps.push_back(s);
-		}
-	}
-
 	bool MagicPanelUp()
 	{
 		return g_magicPanel;
-	}
-
-	std::size_t Queued()
-	{
-		std::scoped_lock l(g_injectLock);
-		return g_steps.size() + (g_stepRunning ? 1 : 0);
 	}
 
 	void SetFrameCallback(FrameCallback a_callback)
@@ -1097,8 +984,4 @@ namespace pad
 		g_frameCallback.store(a_callback, std::memory_order_release);
 	}
 
-	Status GetStatus()
-	{
-		return { g_installed.load(), g_reads.load(), g_rewritten.load(), g_previousTarget };
-	}
 }
