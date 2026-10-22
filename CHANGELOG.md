@@ -3,6 +3,19 @@
 Written as changes happen, not reconstructed afterwards (rule 61). Started 2026-09-29; the history before this file is
 in `git log`. A version number is issued by the version gate only once a build is seen working in game (rule 48).
 
+## 2.0.0 - 2026-10-22 - Improved Wheels Plus
+
+### Changed
+- **Plug and play, with a clean start.** The first time a character loads, the mod clears the game's own hotkey wheel (the eight quick-key slots, items and spells) and starts its own wheels empty. The "clear your existing wheel before installing" step is gone. Anything that was on the game's own wheel is lost at that first load; the mod's wheels are made again with the favourite button, the assign panel or the number keys.
+- **The wheels live in files of their own.** `OBSE\Plugins\ImprovedWheelsPlus\Assignments\<character>.iwp` holds the three wheels and the favourites of one character, with a format header and the character's identity. A file that is not in this format, or belongs to another character, is never read or overwritten, so the wheels of an earlier version or of another wheel mod are not picked up. The wheel no longer imports the game's hotkeys. Upgrading from 1.x: your wheels start empty.
+- **The names of spells you made are kept per character** in `<character>.spells`, in the same folder (the old `ImprovedWheelMenu\SpellNames.txt` was shared by all characters and is no longer read; a spell made in the game has an id that means another spell in another save).
+- **The favourite star's picture moved** to `OBSE\Plugins\ImprovedWheelsPlus\FavouriteStarFill.png`; the `ImprovedWheelMenu` data folder is not used any more.
+- **Not compatible with other wheel mods** (stated on the page and in the README): it replaces Improved Wheel Menu and takes over the game's quick-key radial and hotkeys.
+
+### Fixed
+- The number keys 1-8, and closing the wheel with the mouse, cast the wrong spell on a slot with several entries after spells had been assigned in the Magic menu: the game's own hotkey routine re-selected the spell it kept for that slot about 100 ms after the wheel's choice (the Magic menu's own number-key assign fills that table). The mod now keeps the game's native spell hotkeys empty (checked on every pass of the game's main loop and before every spell choice, through the game's own list clear; items are never touched), so the spell shown on the wheel is the spell cast.
+- Unused code of the old hotkey import and the old wheel-drawing path was removed.
+
 ## 1.3.0 - 2026-10-21 - Improved Wheels Plus
 
 ### Added

@@ -1,9 +1,10 @@
 Improved Wheel - Keyboard and Better Controller Support
 =======================================================
-Version 1.3.0
+Version 2.0.0
 
 A modified build of Improved Wheel Menu (Oblivion Remastered) by ApocryphaRealm (GPL-3.0). It replaces the original
 ImprovedWheelMenu.dll and keeps its file and setting names, so install it instead of the original, not beside it.
+NOT COMPATIBLE WITH OTHER WHEEL MODS: it takes over the game's quick-key radial and hotkeys, so use only one wheel mod.
 What this build adds to the original 1.0.1 is listed under ADDED IN THIS BUILD below and in CHANGELOG.md.
 
 Oblivion Remastered's own quick-key radial, made into a full wheel menu: eight slots that each hold several items, a
@@ -83,14 +84,13 @@ KNOWN ISSUES
   * Existing ini files retain their configured bindings; update [Keyboard] for the new defaults.
   * The number keys 1-8 keep your Caps Lock walk mode only while the wheel key is R (the default). With another wheel key set in [Keyboard] sLB they use the older controller-style script, which switches walk back to run.
 
-BEFORE YOU INSTALL: CLEAR YOUR EXISTING WHEEL
----------------------------------------------
-Skip this step if your old hotkey slots are empty. Before switching from an older setup, clear it for each character:
-  1. Assign the same item to every old hotkey slot; this also overwrites spell assignments.
-  2. Drop that item on the ground and pick it back up, then check the slots are empty.
-  3. Close the game completely before installing. Older shared mod-wheel files are inherited by the first character loaded.
-Already using this build? Open assignment with L3 / keyboard R, point at a slot and hold X for 0.6 s to clear it.
-Upgrading from 1.1.4? Existing ini bindings are retained; use the supplied [Keyboard] defaults for the new layout.
+FIRST START: PLUG AND PLAY
+--------------------------
+Nothing to clear by hand. The first time each character loads (about three seconds in), the mod clears the game's own hotkey wheel
+(items and spells) and starts its own wheels empty, then saves them as OBSE\Plugins\ImprovedWheelsPlus\Assignments\<character>.iwp
+(and <character>.spells, the names of the spells you made). Anything that was on the game's own wheel is gone after that first load; make
+your wheels with the favourite button, the assign panel (L3 / keyboard R, then hold X for 0.6 s on a slot to clear it) or the number keys.
+Wheels of an earlier version or of another wheel mod are not imported. Existing ini files retain their bindings.
 
 INSTALLATION
 ------------
