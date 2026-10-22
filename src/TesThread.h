@@ -20,6 +20,7 @@ namespace testhread
 	bool Install();      // at the first frame; true when the loop call is hooked
 	bool Installed();
 	void Post(Task a_task);
+	void SetPerPass(void (*a_fn)());   // called on the TES thread at the end of every pass of the main loop (keep it tiny); one function
 
 	struct Status
 	{

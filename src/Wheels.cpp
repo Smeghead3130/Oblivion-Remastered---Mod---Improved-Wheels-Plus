@@ -1823,8 +1823,11 @@ logger::info("wheels: the {} wheel's own button - it is the active wheel", Name(
 
 		logger::info("wheels: Magic slot {} used - {} is now the selected spell ({})", a_slot + 1, rows::SpellName(formID),
 			before == static_cast<RE::MagicItem*>(spell) ? "it was already" : before ? "another spell was" : "none was");
-		if (before != static_cast<RE::MagicItem*>(spell)) {
-			testhread::Post([formID, diagnostic] {
+		{
+			const bool changed = before != static_cast<RE::MagicItem*>(spell);
+			testhread::Post([formID, diagnostic, changed] {
+				inventory::SweepNativeSpellKeys();   // the game's own key must find no spell of its own to select once we have chosen
+				if (!changed) return;
 				auto* pc = RE::PlayerCharacter::GetSingleton();
 				auto* sp = RE::TESForm::LookupByID<RE::SpellItem>(formID);
 				if (!pc || !sp) return;

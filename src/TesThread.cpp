@@ -30,6 +30,7 @@ namespace testhread
 		std::deque<Task>           g_tasks;
 		std::atomic<std::uint32_t> g_thread{ 0 };
 		std::atomic<std::uint64_t> g_calls{ 0 };
+		std::atomic<void (*)()>    g_perPass{ nullptr };
 
 		std::int64_t Detour(void* a_this)
 		{
@@ -45,6 +46,9 @@ namespace testhread
 			}
 			for (auto& t : run) {
 				t();
+			}
+			if (const auto perPass = g_perPass.load(std::memory_order_acquire)) {
+				perPass();
 			}
 			return r;
 		}
@@ -88,6 +92,8 @@ namespace testhread
 	}
 
 	bool Installed() { return g_target != nullptr; }
+
+	void SetPerPass(void (*a_fn)()) { g_perPass.store(a_fn, std::memory_order_release); }
 
 	void Post(Task a_task)
 	{

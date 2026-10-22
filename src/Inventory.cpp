@@ -272,6 +272,74 @@ namespace inventory
 		}
 	}
 
+	namespace
+	{
+		// the first bytes of the game's generic list RemoveAll (id 404978, RVA 0x65626C0), game 1.512.105.0
+		constexpr std::uint8_t kRemoveAllHead[] = { 0x48, 0x89, 0x5C, 0x24, 0x08, 0x57, 0x48, 0x83, 0xEC, 0x20, 0x48, 0x8B, 0x59, 0x08, 0x48, 0x8B, 0xF9, 0x48, 0x85, 0xDB };
+
+		struct NativeList { std::uintptr_t vt, head, tail; std::uint32_t count, padding; };   // layout proven 2026-10-21 (native-hotkey-routines.md)
+		struct NativeNode { std::uintptr_t next, prev, form; };
+
+		std::uintptr_t NativeTable()
+		{
+			static REL::Relocation<std::uintptr_t> table{ REL::ID(1669427) };
+			return table.address();
+		}
+
+		// the slot holds exactly one entry and it is a spell (type 16); faults (a list being rebuilt) read as "no"
+		bool SlotHoldsSpell(const NativeList* a_list, std::uint32_t& a_id)
+		{
+			__try {
+				if (a_list->count != 1 || !a_list->head || a_list->head != a_list->tail) {
+					return false;
+				}
+				const auto* node = reinterpret_cast<const NativeNode*>(a_list->head);
+				if (node->next || node->prev || !node->form) {
+					return false;
+				}
+				const auto* form = reinterpret_cast<const RE::TESForm*>(node->form);
+				if (form->GetFormType() != RE::FormType::Spell) {
+					return false;
+				}
+				a_id = form->GetFormID();
+				return true;
+			} __except (EXCEPTION_EXECUTE_HANDLER) {
+				return false;
+			}
+		}
+	}
+
+	// The game keeps the hotkeys of the Magic menu's own assign in the same eight lists as the item keys, and its quick key use
+	// (and the radial's close) selects what a list holds - over the spell the Magic wheel chose (IWP-013: the log of 2026-10-22 showed
+	// the game's SetSelectedSpell re-selecting the native slot's spell ~100 ms after the wheel's). The wheel never reads native spell
+	// entries, so every list that holds a spell is emptied through the game's own RemoveAll, the routine its hotkey setter uses.
+	// Items are left alone (the Equipment wheel lives on their keys). TES thread only.
+	void SweepNativeSpellKeys()
+	{
+		static int s_state = 0;   // 0 = not checked yet, 1 = ready, -1 = this build does not match: never called
+		if (s_state < 0 || !RE::PlayerCharacter::GetSingleton()) {
+			return;
+		}
+		static REL::Relocation<void (*)(void*)> removeAll{ REL::ID(404978) };
+		if (s_state == 0) {
+			if (!HeadIs(removeAll.address(), kRemoveAllHead)) {
+				s_state = -1;
+				logger::error("native hotkeys: the game's list clear is not where this build expects it - native spell hotkeys are left alone");
+				return;
+			}
+			s_state = 1;
+		}
+		const auto table = NativeTable();
+		for (int slot = 0; slot < kSlots; ++slot) {
+			auto*         list = reinterpret_cast<NativeList*>(table + static_cast<std::size_t>(slot) * sizeof(NativeList));
+			std::uint32_t id = 0;
+			if (SlotHoldsSpell(list, id)) {
+				removeAll(list);
+				logger::info("native hotkeys: the spell 0x{:08X} on native slot {} was emptied", id, slot + 1);
+			}
+		}
+	}
+
 	// The game's own way (docs/reverse-engineering/native-hotkey-routines.md, proven in game 2026-10-21): the item-key removal its hotkey
 	// setter uses for every keyed item (id 407660, RVA 0x66471E0), then the clear-all of the eight hotkey lists (id 409811, RVA 0x6725EE0,
 	// called by the world unload). The lists hold the spells too, which no item key reaches. TES thread only.

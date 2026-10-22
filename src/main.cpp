@@ -3,6 +3,7 @@
 
 #include "Favourites.h"
 #include "Controls.h"
+#include "Inventory.h"
 #include "Menus.h"
 #include "Pad.h"
 #include "QuickKeys.h"
@@ -108,6 +109,8 @@ const auto s = quickkeys::GetStatus();
 				tesThreadTried = true;   // once: the ammo wheel's equips run on the TES thread (TesThread.h)
 				if (!testhread::Install()) {
 					logger::error("the TES thread queue is not installed - the ammo wheel opens but cannot equip");
+				} else {
+					testhread::SetPerPass(&inventory::SweepNativeSpellKeys);   // native spell hotkeys stay empty (IWP-013)
 				}
 			}
 			if (!reported && quickkeys::GetStatus().hookInstalled) {

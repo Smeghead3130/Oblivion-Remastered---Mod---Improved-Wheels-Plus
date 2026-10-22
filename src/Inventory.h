@@ -36,6 +36,7 @@ namespace inventory
 
 	void ClearKey(std::uint32_t a_formID);            // takes every quick key off that item
 	void ClearSlot(int a_key);                        // takes quick key N off whichever item has it
+	void SweepNativeSpellKeys();                      // empties every native hotkey slot that holds a SPELL (items stay); TES thread only, cheap enough for every pass
 	bool ClearAllNativeKeys();                        // the game's own clear of every native hotkey, spells too (TES thread only; false = not done)
 	bool SetKey(std::uint32_t a_formID, int a_key);   // puts quick key N on that item (and off any other item)
 
