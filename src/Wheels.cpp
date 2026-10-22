@@ -1,5 +1,7 @@
 #include "Wheels.h"
 #include "WheelStorage.h"
+#include "AtomicFile.h"
+#include "SessionContext.h"
 
 #include "Ammo.h"
 #include "Inventory.h"
@@ -31,13 +33,8 @@ namespace wheels
 
 		std::atomic<int> g_active{ static_cast<int>(Wheel::kEquipment) };
 
-		struct Slot
-		{
-			std::vector<std::uint32_t> entries;   // formIDs, in the order they were added
-			int active = -1;                      // index into entries, -1 = none
-		};
-		using WheelSlots = std::array<Slot, inventory::kSlots>;
-		std::array<WheelSlots, kWheels> g_wheels;
+		using Slot = wheelstorage::Slot;
+		wheelstorage::Model g_wheels;
 		std::string g_loadedFor;   // the character g_wheels belongs to
 		bool g_storageRejected = false;   // never load or overwrite a file without our format and character identity
 		bool g_initializeEmpty = false;   // no stored wheel setup: clear native item keys once inventory is ready
@@ -112,25 +109,10 @@ namespace wheels
 					return;
 				}
 			}
-			std::ofstream f(path, std::ios::trunc);
-			if (!f) {
-				logger::error("wheels: could not write {}", path.string());
-				return;
-			}
-			wheelstorage::WriteHeader(f, g_loadedFor);
-			f << "# <wheel> <slot 1-8> active=<entry, 0 = none> <formID>...\n";
-			for (int w = 0; w < kWheels; ++w) {
-				for (int s = 0; s < inventory::kSlots; ++s) {
-					const Slot& slot = g_wheels[w][s];
-					if (slot.entries.empty()) {
-						continue;
-					}
-					f << WheelName(w) << ' ' << (s + 1) << " active=" << (slot.active + 1);
-					for (const auto id : slot.entries) {
-						f << std::format(" 0x{:08X}", id);
-					}
-					f << '\n';
-				}
+			std::ostringstream data;
+			wheelstorage::WriteAssignments(data, g_loadedFor, g_wheels);
+			if (!data || !atomicfile::Write(path, data.str())) {
+				logger::error("wheels: atomic assignment save failed; previous file preserved: {}", path.string());
 			}
 		}
 
@@ -153,34 +135,12 @@ namespace wheels
 				}
 				return;
 			}
-			if (!wheelstorage::ReadHeader(f, a_name)) {
+			if (!wheelstorage::ReadAssignments(f, a_name, g_wheels)) {
 				g_storageRejected = true;
-				logger::error("wheels: ignoring unrecognized format or character identity in {}; file left untouched", path.string());
+				logger::error("wheels: invalid assignment data or identity in {}; file left untouched", path.string());
 				return;
 			}
-			std::string line;
-			int rows = 0;
-			while (std::getline(f, line)) {
-				if (line.empty() || line[0] == '#') {
-					continue;
-				}
-				std::istringstream in(line);
-				std::string wheel, activeText;
-				int slotNo = 0;
-				if (!(in >> wheel >> slotNo >> activeText) || slotNo < 1 || slotNo > inventory::kSlots || !activeText.starts_with("active=")) {
-					logger::warn("wheels: unreadable line in {}: {}", path.filename().string(), line);
-					continue;
-				}
-				Slot& slot = g_wheels[wheel == "Magic" ? kMagic : wheel == "Ammo" ? kAmmo : wheel == "Favourite" ? kFav : kEquip][slotNo - 1];
-				std::string id;
-				while (in >> id) {
-					slot.entries.push_back(static_cast<std::uint32_t>(std::stoul(id, nullptr, 16)));
-				}
-				slot.active = std::clamp(std::atoi(activeText.c_str() + 7) - 1, -1, static_cast<int>(slot.entries.size()) - 1);
-				++rows;
-			}
-			logger::info("wheels: loaded {} slot(s) for {}", rows, a_name);
-
+			logger::info("wheels: assignments loaded for {}", a_name);
 		}
 
 		int IndexOf(const Slot& a_slot, std::uint32_t a_id)
@@ -355,8 +315,11 @@ namespace wheels
 			}
 		}
 
+		bool ObserveContext();
+
 		bool EnsureLoaded()
 		{
+			if (!ObserveContext()) return false;
 			if (!RE::PlayerCharacter::GetSingleton()) {
 				return false;
 			}
@@ -1265,6 +1228,29 @@ namespace wheels
 		}
 	}
 
+	namespace
+	{
+		bool ObserveContext()
+		{
+			static sessionepoch::Token observed{};
+			const auto now = sessioncontext::Current();
+			if (now != observed) {
+				observed = now;
+				g_pending = {};
+				g_use = {};
+				g_holdKey = -1;
+				g_holdItem = 0;
+				g_leaving.clear();
+				g_hudCheckAt = {};
+				g_hudIconBefore = nullptr;
+				g_loadedFor.clear();
+				g_initializeEmpty = false;
+				g_sanitized = false;
+			}
+			return now.context.ready;
+		}
+	}
+
 	const char* Name(Wheel a_wheel)
 	{
 		return a_wheel == Wheel::kMagic ? "Magic" : a_wheel == Wheel::kAmmo ? "Ammo" : "Equipment";
@@ -1541,6 +1527,7 @@ namespace wheels
 
 	void Tick(bool a_assignHeld)
 	{
+		if (!ObserveContext()) return;
 		CheckHud();
 		AssertMagic();
 		DriveUse();
@@ -1667,6 +1654,29 @@ logger::info("wheels: the {} wheel's own button - it is the active wheel", Name(
 		}
 	}
 
+	void QuickUse(int a_slot)
+	{
+		if (a_slot < 0 || a_slot >= inventory::kSlots || quickkeys::GameMessageUp() || !EnsureLoaded()) return;
+		if (Active() == Wheel::kMagic) { UseMagic(a_slot); return; }
+		if (Active() == Wheel::kAmmo) {
+			if (settings::Get().ammoWheel && ammo::BowHeld()) UseAmmo(a_slot);
+			return;
+		}
+		const Slot& slot = g_wheels[kEquip][a_slot];
+		if (slot.active < 0 || slot.active >= static_cast<int>(slot.entries.size())) return;
+		const auto id = slot.entries[slot.active];
+		if (!inventory::Has(id)) return;
+		if (MiscTool(id)) {
+			HammerInvStart(id);   // retain the existing Inventory-before-hammer flow
+		} else if (Equippable(id)) {
+			inventory::ToggleKeyed(id);   // resolve worn state on the TES thread, not at enqueue time
+		} else {
+			inventory::EquipKeyed(id);   // consumables/poisons use the existing game action directly
+		}
+		g_lastUse = std::format("slot {}: direct quick use of {}", a_slot + 1, inventory::NameOf(id));
+		logger::info("wheels: direct quick use slot {} without opening the radial", a_slot + 1);
+	}
+
 	void UseNow(int a_slot, const char* a_how, bool a_stayOpen)
 	{
 		if (a_slot < 0) {
@@ -1752,6 +1762,7 @@ logger::info("wheels: the {} wheel's own button - it is the active wheel", Name(
 
 	void ReleaseKey()
 	{
+		if (!ObserveContext()) return;
 		if (g_holdKey < 0) {
 			return;
 		}
@@ -1794,13 +1805,11 @@ logger::info("wheels: the {} wheel's own button - it is the active wheel", Name(
 		logger::info("wheels: Magic slot {} used - {} is now the selected spell ({})", a_slot + 1, rows::SpellName(formID),
 			before == static_cast<RE::MagicItem*>(spell) ? "it was already" : before ? "another spell was" : "none was");
 		{
-			const bool changed = before != static_cast<RE::MagicItem*>(spell);
-			testhread::Post([formID, changed] {
+			testhread::Post([formID] {
 				inventory::SweepNativeSpellKeys();   // the game's own key must find no spell of its own to select once we have chosen
-				if (!changed) return;
 				auto* pc = RE::PlayerCharacter::GetSingleton();
 				auto* sp = RE::TESForm::LookupByID<RE::SpellItem>(formID);
-				if (!pc || !sp) return;
+				if (!pc || !sp || pc->selectedSpell == static_cast<RE::MagicItem*>(sp)) return;
 				static REL::Relocation<void (*)(RE::PlayerCharacter*, RE::MagicItem*)> setSelected{ REL::ID(406972) };
 				setSelected(pc, static_cast<RE::MagicItem*>(sp));
 			});

@@ -1,6 +1,7 @@
 #include "TesThread.h"
 
 #include "Scan.h"
+#include "SessionContext.h"
 
 #include <MinHook.h>
 
@@ -39,6 +40,7 @@ namespace testhread
 				g_thread = GetCurrentThreadId();
 				logger::info("tes thread: the main loop's per-iteration call runs on thread {} - the ammo wheel's equips run here", g_thread.load());
 			}
+			(void)sessioncontext::Current();   // observe load/unavailable intervals even with no tasks
 			std::deque<Task> run;
 			{
 				std::scoped_lock l(g_lock);
@@ -97,8 +99,12 @@ namespace testhread
 
 	void Post(Task a_task)
 	{
+		const auto captured = sessioncontext::Current();
+		if (!captured.context.ready) return;
 		std::scoped_lock l(g_lock);
-		g_tasks.push_back(std::move(a_task));
+		g_tasks.push_back([captured, task = std::move(a_task)] {
+			if (sessionepoch::Epoch::Allows(captured, sessioncontext::Current())) task();
+		});
 	}
 
 	Status GetStatus()

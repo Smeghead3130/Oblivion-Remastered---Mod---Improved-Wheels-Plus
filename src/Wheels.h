@@ -74,6 +74,7 @@ namespace wheels
 	// RB (or A) on the HUD radial's Equipment wheel (key 0-7): equipment goes on at once through Actor::EquipObject on
 	// the TES thread (an item already worn: nothing, logged); anything else gets the game's own quick-key press once the
 	// radial has closed (on nothing). The result is read back from the item and logged ("USE result")
+	void QuickUse(int a_slot);   // active wheel slot directly, no radial/input simulation
 	void UseNow(int a_slot, const char* a_how, bool a_stayOpen = false);   // a_stayOpen: a consumable is used at once and the radial stays up
 	std::string LastUse();                     // what the last RB / A use did (the iwm.pad state)
 	void UseMagic(int a_slot);

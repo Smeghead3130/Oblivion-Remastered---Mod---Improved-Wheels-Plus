@@ -19,7 +19,7 @@ namespace testhread
 
 	bool Install();      // at the first frame; true when the loop call is hooked
 	bool Installed();
-	void Post(Task a_task);
+	void Post(Task a_task);   // drops work if the character context is unavailable or changed before dispatch
 	void SetPerPass(void (*a_fn)());   // called on the TES thread at the end of every pass of the main loop (keep it tiny); one function
 
 	struct Status

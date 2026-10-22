@@ -6,10 +6,12 @@
 #include "Reflect.h"
 #include "Settings.h"
 #include "WheelStorage.h"
+#include "AtomicFile.h"
 #include "Ui.h"
 
 #include <filesystem>
 #include <fstream>
+#include <sstream>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -488,6 +490,7 @@ namespace rows
 		// 0xFF......, which is another spell in another character's save, so one shared file would mix the characters up.
 		std::unordered_map<std::uint32_t, std::string> g_displayNames;
 		std::string                                    g_namesFor;                // the character g_displayNames belongs to ("" = none loaded yet)
+		bool                                           g_namesDirty = false;
 		bool                                           g_namesRejected = false;   // a file that is not ours stays untouched and unused
 		ULONGLONG                                      g_namesCheckedAt = 0;
 
@@ -508,6 +511,7 @@ namespace rows
 			g_namesFor = who;
 			g_displayNames.clear();
 			g_namesRejected = false;
+			g_namesDirty = false;
 			const auto    path = NamesFile(who);
 			std::ifstream f(path);
 			if (!f) {
@@ -537,8 +541,9 @@ namespace rows
 		{
 			if (a_name.empty() || !LoadNames()) return;
 			auto& slot = g_displayNames[a_id];
-			if (slot == a_name) return;
+			if (slot == a_name && !g_namesDirty) return;
 			slot = a_name;
+			g_namesDirty = true;
 			const auto      path = NamesFile(g_namesFor);
 			std::error_code ec;
 			std::filesystem::create_directories(path.parent_path(), ec);
@@ -550,13 +555,14 @@ namespace rows
 					return;
 				}
 			}
-			std::ofstream f(path, std::ios::trunc);
-			if (!f) {
-				logger::error("rows: could not write {}", path.string());
-				return;
+			std::ostringstream data;
+			wheelstorage::WriteHeader(data, g_namesFor, wheelstorage::kSpellNamesSignature);
+			for (const auto& [id, name] : g_displayNames) data << std::format("{:08X}", id) << '\t' << name << '\n';
+			if (!data || !atomicfile::Write(path, data.str())) {
+				logger::error("rows: atomic spell-name save failed; previous file preserved: {}", path.string());
+			} else {
+				g_namesDirty = false;
 			}
-			wheelstorage::WriteHeader(f, g_namesFor, wheelstorage::kSpellNamesSignature);
-			for (const auto& [id, name] : g_displayNames) f << std::format("{:08X}", id) << '\t' << name << '\n';
 		}
 
 		// A magic row's spell. The string-table key is the spell's full name in the game data; a spell the player made has no

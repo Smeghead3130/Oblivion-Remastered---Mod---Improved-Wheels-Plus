@@ -8,7 +8,7 @@
 // controller control they are named for, laid over the real pad on the game thread, so every rule in Pad.cpp (the wheels,
 // the assign panel, favouriting, clearing a slot, the ammo wheel) runs for them exactly as for a controller. With no pad
 // connected the read is handed over as a connected pad while a bound key is down (and for a moment after).
-// A slot key (Numpad 1-8) plays "wheel button + the right stick at slot N, then A", so the slot is pointed and used at once.
+// Slot keys activate the selected entry directly, without opening the radial or injecting controller input.
 // ============================================================================================================
 
 namespace keyboard
@@ -22,10 +22,8 @@ namespace keyboard
 	bool PresentWhenNoPad();
 	// the mouse position in the UI's viewport units (the unit the widgets are measured in); false when it cannot be read
 	bool MouseUnits(double& a_x, double& a_y);
-	// a slot key's script (wheel button, the stick at slot N, A) is running: its stick is meant exactly, never moved to another slot
+	// a click or assignment script is running: preserve its intended pointed slot
 	bool ScriptRunning();
-	// a slot key's use script (wheel button, stick, A) is running or has just ended: its short hold of the wheel button is a quick use, never a tap that keeps the wheel open
-	bool UseScriptRecent();
 	// the radial opened with the native R key closes the way Esc or a second R closes it (B and the key-up of the held R); nothing when R is not held
 	void CancelNativeWheel();
 }
