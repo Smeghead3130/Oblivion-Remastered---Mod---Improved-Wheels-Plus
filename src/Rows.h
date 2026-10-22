@@ -28,7 +28,7 @@ namespace rows
 	std::size_t   PlayerSpellCount();                       // how many spells the player knows (0 while the list is not built)
 	std::uint32_t SpellByName(const std::string& a_name);   // the player's spell of that name (0 = none)
 	std::string   SpellName(std::uint32_t a_formID);
-	std::string   DisplayName(std::uint32_t a_formID);   // a spell the player made: the name the magic menu showed for it (kept in SpellNames.txt); "" = not seen yet
+	std::string   DisplayName(std::uint32_t a_formID);   // a spell the player made: the name the magic menu showed for it (kept per character in ImprovedWheelsPlus/Assignments/<character>.spells); "" = not seen yet
 
 	// the favourites column (Favourites.cpp): every live inventory row now, the key its name reads (a string-table key,
 	// else the text) and the item it shows; true from TakeInventoryRowsChanged when a row fired an event since the last ask

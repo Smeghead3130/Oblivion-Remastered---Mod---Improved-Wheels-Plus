@@ -89,11 +89,7 @@ namespace wheels
 
 		std::filesystem::path FileFor(const std::string& a_name)
 		{
-			std::string safe;
-			for (const char c : a_name) {
-				safe += (std::isalnum(static_cast<unsigned char>(c)) || c == ' ' || c == '-' || c == '_') ? c : '_';
-			}
-			return settings::PluginFolder() / L"ImprovedWheelsPlus" / L"Assignments" / (safe + ".iwp");
+			return settings::PluginFolder() / L"ImprovedWheelsPlus" / L"Assignments" / (wheelstorage::SafeName(a_name) + ".iwp");
 		}
 
 		std::atomic<std::uint32_t> g_generation{ 1 };   // moves with every saved change (the favourites column redraws)

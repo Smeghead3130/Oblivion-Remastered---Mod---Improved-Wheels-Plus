@@ -73,6 +73,26 @@ int main()
 		}
 	}
 
+	// Spell names are per character, in the same folder, with their own signature.
+	{
+		Check(wheelstorage::SafeName("Hero #1234") == "Hero _1234", "wheel storage: file stem keeps letters, digits, space, - and _");
+		Check(wheelstorage::SafeName("a/b\\c:d") == "a_b_c_d", "wheel storage: path characters replaced");
+		std::ostringstream names;
+		wheelstorage::WriteHeader(names, "Hero #1234", wheelstorage::kSpellNamesSignature);
+		std::istringstream own(names.str());
+		Check(wheelstorage::ReadHeader(own, "Hero #1234", wheelstorage::kSpellNamesSignature), "spell names: own header round trip");
+		std::istringstream otherCharacter(names.str());
+		Check(!wheelstorage::ReadHeader(otherCharacter, "Hero #5678", wheelstorage::kSpellNamesSignature), "spell names: other character rejected");
+		std::istringstream asAssignments(names.str());
+		Check(!wheelstorage::ReadHeader(asAssignments, "Hero #1234"), "spell names: a names file is not an assignments file");
+		std::ostringstream assignments;
+		wheelstorage::WriteHeader(assignments, "Hero #1234");
+		std::istringstream asNames(assignments.str());
+		Check(!wheelstorage::ReadHeader(asNames, "Hero #1234", wheelstorage::kSpellNamesSignature), "spell names: an assignments file is not a names file");
+		std::istringstream legacy("FF003586\t[Illu] Minor Invisibility\n");
+		Check(!wheelstorage::ReadHeader(legacy, "Hero #1234", wheelstorage::kSpellNamesSignature), "spell names: the old shared SpellNames.txt is not read");
+	}
+
 	std::printf("%d checks, %d failed\n", g_run, g_failed);
 	return g_failed == 0 ? 0 : 1;
 }
