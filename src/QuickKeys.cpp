@@ -32,8 +32,6 @@ namespace quickkeys
 		UE::UFunction* g_fnUpdateIcons = nullptr;    // the game (re)draws all eight pictures
 		UE::UFunction* g_fnSetKeyPicture = nullptr;  // SetQuickKeyByIndex: one picture
 		std::atomic<bool> g_redrew{ false };       // the game redrew its pictures: the inventory wheel is put right on the next read, not up to 100 ms later
-		std::atomic<bool> g_gameDrew{ false };      // the game drew pictures since the last TakeGameDrew()
-		bool g_drawing = false;                     // our own SetQuickKeyByIndex calls (game thread only)
 		std::atomic<int> g_frame{ 0 };
 		std::atomic<ULONGLONG> g_boostUntil{ 0 };   // the wheel changed visibility: its animations are played faster until then
 
@@ -189,19 +187,17 @@ namespace quickkeys
 				if (a_params) { OnVisibility(a_obj, *static_cast<const std::uint8_t*>(a_params)); }
 			} else if (a_fn == g_fnKeyIndex) {
 				if (a_params) { Emit(Event::kPointed, *static_cast<const std::int32_t*>(a_params)); }
-			} else if (a_fn == g_fnUpdateIcons || (a_fn == g_fnSetKeyPicture && !g_drawing)) {
-				g_gameDrew.store(true); g_redrew.store(true);
+			} else if (a_fn == g_fnUpdateIcons || a_fn == g_fnSetKeyPicture) {
+				g_redrew.store(true);
 			} else if (!g_fnVisibility || !g_fnKeyIndex || !g_fnUpdateIcons || !g_fnSetKeyPicture) {
 				// still learning the UFunction pointers: one name compare per unknown function
 				const std::string n = pe::FunctionName(a_fn);
 				if (!g_fnUpdateIcons && n == "UpdateIcons") {
 					g_fnUpdateIcons = a_fn;
-					g_gameDrew.store(true); g_redrew.store(true);
+					g_redrew.store(true);
 				} else if (!g_fnSetKeyPicture && n == "SetQuickKeyByIndex") {
 					g_fnSetKeyPicture = a_fn;
-					if (!g_drawing) {
-						g_gameDrew.store(true); g_redrew.store(true);
-					}
+					g_redrew.store(true);
 				}
 				if (!g_fnVisibility && n == "OnVisibilityChangedEvent") {
 					g_fnVisibility = a_fn;
@@ -491,82 +487,7 @@ namespace quickkeys
 		return out;
 	}
 
-	int WriteIcons(const Icons& a_icons)
-	{
-		auto* cls = g_viewModelClass.load(std::memory_order_acquire);
-		if (!cls || !reflect::Ok()) {
-			return 0;
-		}
-		Icons copy = a_icons;
-		struct Params { UE::UObject** data; std::int32_t num; std::int32_t max; } params{ copy.data(), static_cast<std::int32_t>(copy.size()),
-			static_cast<std::int32_t>(copy.size()) };
-		int n = 0;
-		for (auto* vm : reflect::Instances(cls)) {
-			n += reflect::Call(vm, L"SetIcons", &params) ? 1 : 0;
-		}
-		return n;
-	}
-
 	bool TakeRedrew() { return g_redrew.exchange(false); }
-
-	bool TakeGameDrew()
-	{
-		return g_gameDrew.exchange(false);
-	}
-
-	int DrawIcons(const Icons& a_icons, const Icons& a_shown)
-	{
-		// every wheel widget (the HUD's, the inventory's and the magic menu's): SetQuickKeyByIndex(Index, texture) - the
-		// widget's own drawing call (UVModernQuickKeysMenu, a BlueprintImplementableEvent)
-		auto* cls = g_widgetClass.load(std::memory_order_acquire);
-		if (!cls || !reflect::Ok()) {
-			return 0;
-		}
-		static UE::UFunction* fn = nullptr;
-		static std::int32_t   offIndex = -1, offTexture = -1, size = 0;
-		static bool           reported = false;
-		auto widgets = reflect::Instances(cls);
-		if (!fn && !widgets.empty()) {
-			fn = widgets.front()->FindFunction(UE::FName(L"SetQuickKeyByIndex", UE::EFindName::Find));
-			if (fn) {
-				auto* st = reinterpret_cast<UE::UStruct*>(fn);
-				size = st->propertiesSize;
-				for (const auto& [name, off] : reflect::Fields(st)) {
-					if (name == "Index") {
-						offIndex = off;
-					} else if (offTexture < 0) {
-						offTexture = off;   // the one other parameter: the picture
-					}
-				}
-				logger::info("quick keys: SetQuickKeyByIndex params Index 0x{:X}, picture 0x{:X}, size 0x{:X}", offIndex, offTexture, size);
-			}
-		}
-		if (!fn || offIndex < 0 || offTexture < 0 || size <= 0) {
-			if (!reported) {
-				reported = true;
-				logger::error("quick keys: the wheel widget has no usable SetQuickKeyByIndex - the Magic wheel cannot be drawn");
-			}
-			return 0;
-		}
-		// only the slots that differ: each call is the widget's own "a slot changed" (it animates and clicks)
-		int drawn = 0;
-		std::vector<std::uint8_t> params(static_cast<std::size_t>(size));
-		g_drawing = true;
-		for (auto* w : widgets) {
-			for (int i = 0; i < static_cast<int>(a_icons.size()); ++i) {
-				if (a_icons[i] == a_shown[i]) {
-					continue;
-				}
-				std::fill(params.begin(), params.end(), std::uint8_t{ 0 });
-				*reinterpret_cast<std::int32_t*>(params.data() + offIndex) = i;
-				*reinterpret_cast<UE::UObject**>(params.data() + offTexture) = a_icons[i];
-				w->ProcessEvent(fn, params.data());
-				++drawn;
-			}
-		}
-		g_drawing = false;
-		return drawn;
-	}
 
 	bool RadialOpen()
 	{

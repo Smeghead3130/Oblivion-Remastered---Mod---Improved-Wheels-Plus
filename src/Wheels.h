@@ -8,7 +8,7 @@
 // The three wheels (Equipment, Magic, Ammo) x eight slots x up to uEntriesPerSlot entries - the owner's rulings of
 // 2026-09-26 and 2026-09-29 (PLAN.md). The controls (Pad.cpp) call these; every call is on the game thread.
 // Slots are the game's key numbers 0-7 (the UI shows 1-8). Saved per character in
-// OBSE\Plugins\ImprovedWheelMenu\<character>.txt.
+// OBSE\Plugins\ImprovedWheelsPlus\Assignments\<character>.iwp.
 //
 // EQUIPMENT: the active entry of a slot is the item carrying the game's quick key (Inventory.h), so the game's
 // own radial, its "use" on close and the save all keep working untouched; the other entries are ours.

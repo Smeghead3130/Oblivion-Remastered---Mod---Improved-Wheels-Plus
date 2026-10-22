@@ -59,16 +59,10 @@ namespace quickkeys
 	// what the number keys 1-8 run. Game thread. False when the call could not be made.
 	bool PressQuickKey(int a_key);
 
-	// The eight slot pictures the radial and the menu panels draw (VQuickKeysMenuViewModel::Icons, by key 0-7).
-	// WriteIcons pushes a set through the view model's own SetIcons on every instance; returns how many took it.
+	// The eight slot pictures read by the active material overlay (MagicWheel.cpp).
 	using Icons = std::array<UE::UObject*, 8>;
 	Icons ReadIcons();
-	int   WriteIcons(const Icons& a_icons);
-	// draws straight onto every wheel widget - only the slots where a_icons differs from a_shown (what the widgets
-	// show now); returns the pictures set
-	int   DrawIcons(const Icons& a_icons, const Icons& a_shown);
 	bool  TakeRedrew();     // the game redrew its own pictures since the last call (the overlay puts its own right at once)
-	bool  TakeGameDrew();   // the game drew its own pictures since the last call (the widgets show the view model's again)
 
 	struct Status
 	{

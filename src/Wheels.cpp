@@ -1,4 +1,5 @@
 #include "Wheels.h"
+#include "WheelStorage.h"
 
 #include "Ammo.h"
 #include "Inventory.h"
@@ -38,6 +39,8 @@ namespace wheels
 		using WheelSlots = std::array<Slot, inventory::kSlots>;
 		std::array<WheelSlots, kWheels> g_wheels;
 		std::string g_loadedFor;   // the character g_wheels belongs to
+		bool g_storageRejected = false;   // never load or overwrite a file without our format and character identity
+		bool g_initializeEmpty = false;   // no stored wheel setup: clear native item keys once inventory is ready
 
 		int MigrateAmmo();
 
@@ -86,36 +89,35 @@ namespace wheels
 
 		std::filesystem::path FileFor(const std::string& a_name)
 		{
-			std::string safe;
-			for (const char c : a_name) {
-				safe += (std::isalnum(static_cast<unsigned char>(c)) || c == ' ' || c == '-' || c == '_') ? c : '_';
-			}
-			return settings::PluginFolder() / L"ImprovedWheelMenu" / (safe + ".txt");
+			return settings::PluginFolder() / L"ImprovedWheelsPlus" / L"Assignments" / (wheelstorage::SafeName(a_name) + ".iwp");
 		}
-
-		// Items the player took off the Equipment wheel this session, and the slot each left (cleared with a new character):
-		// a game key that comes back on one of them (a loaded save's own keys) is taken off it again, not picked up. Putting
-		// it back on the wheel (Y, the watched assign) takes it off this list. (A mouse assign in the inventory is not
-		// watched: on an item taken off this session it would be undone - the owner plays on the controller.)
-		std::unordered_map<std::uint32_t, int> g_takenOff;
 
 		std::atomic<std::uint32_t> g_generation{ 1 };   // moves with every saved change (the favourites column redraws)
 
 		void Save()
 		{
 			g_generation.fetch_add(1, std::memory_order_relaxed);
-			if (g_loadedFor.empty()) {
+			if (g_loadedFor.empty() || g_storageRejected) {
 				return;
 			}
 			const auto path = FileFor(g_loadedFor);
 			std::error_code ec;
 			std::filesystem::create_directories(path.parent_path(), ec);
+			// Do not overwrite a foreign file even if it appeared after Load.
+			if (std::filesystem::exists(path)) {
+				std::ifstream existing(path);
+				if (!wheelstorage::ReadHeader(existing, g_loadedFor)) {
+					g_storageRejected = true;
+					logger::error("wheels: refusing to overwrite unrecognized assignment file {}", path.string());
+					return;
+				}
+			}
 			std::ofstream f(path, std::ios::trunc);
 			if (!f) {
 				logger::error("wheels: could not write {}", path.string());
 				return;
 			}
-			f << "# Improved Wheel Menu - the wheels of " << g_loadedFor << "\n";
+			wheelstorage::WriteHeader(f, g_loadedFor);
 			f << "# <wheel> <slot 1-8> active=<entry, 0 = none> <formID>...\n";
 			for (int w = 0; w < kWheels; ++w) {
 				for (int s = 0; s < inventory::kSlots; ++s) {
@@ -135,26 +137,25 @@ namespace wheels
 		void Load(const std::string& a_name)
 		{
 			g_wheels = {};
+			g_initializeEmpty = false;
+			g_storageRejected = false;
 			g_loadedFor = a_name;
-			g_takenOff.clear();
 			g_generation.fetch_add(1, std::memory_order_relaxed);
 			const auto path = FileFor(a_name);
 			std::ifstream f(path);
-			// a file written before wheels were kept per character (named by the typed name only): the first character to load
-			// after the change takes it over, and it is put aside so no later character can
-			std::filesystem::path legacy;
 			if (!f) {
-				const auto hash = a_name.rfind(" #");
-				if (hash != std::string::npos) {
-					legacy = FileFor(a_name.substr(0, hash));
-					if (std::filesystem::exists(legacy)) {
-						f.open(legacy);
-						logger::info("wheels: {} takes over the wheels file written before they were kept per character ({})", a_name, legacy.filename().string());
-					}
+				if (std::filesystem::exists(path)) {
+					g_storageRejected = true;
+					logger::error("wheels: assignment file cannot be read; leaving it untouched: {}", path.string());
+				} else {
+					g_initializeEmpty = true;
+					logger::info("wheels: no ImprovedWheelsPlus assignments for {} yet ({})", a_name, path.filename().string());
 				}
+				return;
 			}
-			if (!f) {
-				logger::info("wheels: no saved wheels for {} yet ({})", a_name, path.filename().string());
+			if (!wheelstorage::ReadHeader(f, a_name)) {
+				g_storageRejected = true;
+				logger::error("wheels: ignoring unrecognized format or character identity in {}; file left untouched", path.string());
 				return;
 			}
 			std::string line;
@@ -179,12 +180,7 @@ namespace wheels
 				++rows;
 			}
 			logger::info("wheels: loaded {} slot(s) for {}", rows, a_name);
-			if (!legacy.empty() && std::filesystem::exists(legacy)) {
-				f.close();
-				Save();   // under the character's own name now
-				std::error_code ec;
-				std::filesystem::rename(legacy, legacy.string() + ".migrated", ec);
-			}
+
 		}
 
 		int IndexOf(const Slot& a_slot, std::uint32_t a_id)
@@ -200,28 +196,8 @@ namespace wheels
 
 		std::string Unreachable(int a_slot, std::uint32_t a_id, const inventory::KeyMap& a_keys);
 
-		int SlotHolding(std::uint32_t a_id)
-		{
-			for (int s = 0; s < inventory::kSlots; ++s) {
-				if (IndexOf(g_wheels[kEquip][s], a_id) >= 0) {
-					return s;
-				}
-			}
-			return -1;
-		}
-
-		// The Equipment wheel and the game's keys made to agree - an item is on ONE slot, and each slot's active entry is
-		// the item on its key. The WHEEL wins for every item it holds: on 2026-10-01 the owner stacked the longsword and the
-		// mace on slot 2 (02:35:18 / 02:35:21; the keys followed, and LT / RT cycled all three), then a save loaded at about
-		// 02:40-02:42 put the save's own keys back (mace on 1, longsword on 3), and at 02:46:16 - the first wheel read after
-		// it, the radial opening - the old rule ("the game's keys are the truth") took both off slot 2. Now:
-		//   * a key on an item the wheel holds on ANOTHER slot comes off that item; the slot's own active entry goes back on
-		//     its key;
-		//   * a key on an item the player took off the wheel this session comes off it again;
-		//   * a key on an item the wheel does not hold at all is still picked up (a key the game set that we never saw);
-		//   * a slot whose key holds nothing gets its active entry back on the key; a key on another entry of the same slot
-		//     is moved back to the active one.
-		// (The 2026-10-01 01:50 case - a wheel file written beside another save - is settled the same way: the file wins.)
+		// Stored wheel assignments are authoritative. Game hotkeys are only the backing keys for
+		// explicit wheel choices; loading a save must never import new entries into the wheel.
 		int           g_holdKey = -1;      // the quick key taken off its item while the radial closes on another wheel's slot
 		std::uint32_t g_holdItem = 0;
 
@@ -257,33 +233,12 @@ namespace wheels
 				if (!id || IndexOf(slot, id) >= 0) {
 					continue;
 				}
-				if (const int home = SlotHolding(id); home >= 0) {
-					inventory::ClearKey(id);
-					cleared = true;
-					logger::info("wheels: the game's key {} held {}, which the wheel has on slot {} - the key taken off it (the wheel keeps the player's choice; a loaded save brings back its own keys)",
-						s + 1, inventory::NameOf(id), home + 1);
-					continue;
-				}
-				if (const auto it = g_takenOff.find(id); it != g_takenOff.end()) {
-					inventory::ClearKey(id);
-					cleared = true;
-					logger::info("wheels: the game's key {} held {}, which was taken off Equipment slot {} this session - the key taken off it again",
-						s + 1, inventory::NameOf(id), it->second + 1);
-					continue;
-				}
-				if (static_cast<int>(slot.entries.size()) >= Cap()) {
-					logger::info("wheels: Equipment slot {} is full - {} leaves it to make room for the game's key", s + 1, inventory::NameOf(slot.entries.back()));
-					slot.entries.pop_back();
-					if (slot.active >= static_cast<int>(slot.entries.size())) {
-						slot.active = -1;
-					}
-				}
-				slot.entries.push_back(id);
-				slot.active = static_cast<int>(slot.entries.size()) - 1;
-				g_takenOff.erase(id);
-				changed = true;
-				logger::info("wheels: Equipment slot {} picked up {} from the game (the item on the game's key {}, on no slot of the wheel)", s + 1,
-					inventory::NameOf(id), s + 1);
+				// A saved game's key is not an assignment request. Clear it instead of importing
+				// an item (or evicting a stored entry when the slot is full). Pending explicit
+				// menu assignments bypass Reconcile until Settle has recorded the new entry.
+				inventory::ClearKey(id);
+				cleared = true;
+				logger::info("wheels: game hotkey {} cleared - stored wheel assignments only (no automatic import)", s + 1);
 			}
 			if (cleared) {
 				keys = inventory::Keys();
@@ -411,6 +366,22 @@ namespace wheels
 				g_sanitized = false;
 				g_sanitizeAt = GetTickCount64() + 3000;   // let the character's inventory and spell list finish loading
 			}
+			if (g_storageRejected) return false;
+			if (g_initializeEmpty) {
+				// Wait for the character's inventory to finish loading; do not mark first-use
+				// cleanup complete against an absent or half-built inventory.
+				if (GetTickCount64() < g_sanitizeAt || !inventory::Ready() || AssignPending()) return false;
+				for (int s = 0; s < inventory::kSlots; ++s) inventory::ClearSlot(s);
+				g_initializeEmpty = false;
+				Save();   // record an empty per-character setup; later loads preserve deliberate assignments
+				logger::info("wheels: first-use initialization cleared all native item slots; empty wheel setup saved");
+				// the native spell hotkeys live in the same eight lists and no item key reaches them: the game's own clear, on the TES thread
+				if (testhread::Installed()) {
+					testhread::Post([] { inventory::ClearAllNativeKeys(); });
+				} else {
+					logger::warn("wheels: first-use initialization left the native spell hotkeys (the TES thread queue is not installed)");
+				}
+			}
 			if (!g_sanitized && GetTickCount64() >= g_sanitizeAt && inventory::Ready() && rows::PlayerSpellCount() > 0 &&
 				!AssignPending()) {
 				g_sanitized = true;
@@ -448,75 +419,9 @@ namespace wheels
 			return icons;
 		}
 
-		// The game keeps its own copy of the eight pictures and refreshes it only when IT assigns a key, so a slot whose
-		// key we moved goes black (read 2026-09-29). While the wheel is on screen, each Equipment slot holding an item
-		// whose picture a row has shown is kept at that picture (throttled: the inventory walk is not free).
-		// What is DRAWN is set on the wheel widgets themselves (quickkeys::DrawIcons); the view model keeps the game's
-		// own eight pictures untouched, so it is always the truth for "the game's keys". A slot is drawn only when it
-		// must change: every SetQuickKeyByIndex is the widget's "slot changed" and clicks (the owner heard a stream of
-		// clicks while an earlier build redrew all eight every 250 ms). After the game draws its own (UpdateIcons),
-		// the widgets show the view model's pictures again, so only the slots that differ from those are redrawn.
-		quickkeys::Icons g_shownNow{};       // what the widgets show, as far as we know
-		bool             g_shownKnown = false;
-
-		void Draw(const quickkeys::Icons& a_icons, bool /*a_force*/)
-		{
-			if (quickkeys::TakeGameDrew() || !g_shownKnown) {
-				g_shownNow = quickkeys::ReadIcons();
-				g_shownKnown = true;
-			}
-			if (a_icons == g_shownNow) {
-				return;
-			}
-			quickkeys::DrawIcons(a_icons, g_shownNow);
-			g_shownNow = a_icons;
-		}
-
-		// The game refreshes its pictures only when IT assigns a key, so a slot whose key we moved shows the old or no
-		// picture (read 2026-09-29). While the wheel is on screen, each Equipment slot holding an item whose picture a
-		// row has shown is drawn with that picture; every other slot keeps the game's.
-		std::chrono::steady_clock::time_point g_nextEquipCheck{};
-
-		// The inventory wheel's slots are drawn from the keys on the wheel's own material instance now (MagicWheel.cpp,
-		// the equipment pass): the game's picture list (the view model's Icons) was found EMPTY while the keys held items
-		// (2026-09-30 04:37, the primary's read), so the game set every slot's opacity to 0, and the old redraw here -
-		// SetQuickKeyByIndex, one "slot changed" click per slot - only swapped pictures in and never made them visible.
-		constexpr bool kRedrawThroughTheWidget = false;
-
-		void AssertEquipment()
-		{
-			if (!kRedrawThroughTheWidget || !(quickkeys::RadialOpen() || quickkeys::PanelOpen())) {
-				return;
-			}
-			const auto now = std::chrono::steady_clock::now();
-			if (now < g_nextEquipCheck) {
-				return;
-			}
-			g_nextEquipCheck = now + 100ms;   // the inventory walk is not free
-			const auto keys = inventory::Keys();
-			auto icons = quickkeys::ReadIcons();
-			bool ours = false;
-			for (int k = 0; k < inventory::kSlots; ++k) {
-				auto* icon = keys[k] ? rows::ItemIcon(keys[k]) : nullptr;
-				if (icon && icons[k] != icon) {
-					icons[k] = icon;
-					ours = true;
-				}
-			}
-			if (ours) {
-				Draw(icons, false);
-			}
-		}
-
-		// The Magic wheel is a wheel of its own (the owner, 2026-09-30: "the magic menu wheel is a distinct separate wheel
-		// from the inventory wheel. And just like the inventory wheel, even if it's empty, it's still visible and it still
-		// draws. It would just be empty"). The widget's own SetQuickKeyByIndex keeps the old picture when given none, so an
-		// empty Magic slot went on showing the inventory wheel's item. The Magic wheel is therefore written into the wheel's
-		// VIEW MODEL (SetIcons), where the game's own drawing shows an empty key as empty; the game's eight pictures are kept
-		// and put back when the Magic wheel leaves the screen.
-		quickkeys::Icons       g_gameIcons{};
-		bool                   g_haveGameIcons = false;
-		std::chrono::steady_clock::time_point g_nextMagicCheck{};
+		// Drawing is owned by MagicWheel.cpp. Keep the existing notification wrappers;
+		// the old widget redraw branch was permanently disabled.
+		void AssertEquipment() {}
 
 		// The Magic wheel is its own widget now (MagicWheel.cpp): nothing is written into the game's view model - every
 		// slot the old SetIcons redrew was the widget's own "slot changed" and ticked (the owner, 2026-09-30: "only on the
@@ -551,7 +456,6 @@ namespace wheels
 					filled, drawn);
 			} else {
 				g_shown = Shown::kGame;
-				g_shownKnown = false;
 				logger::info("wheels: the Magic wheel is down - the game's own wheel shows");
 			}
 		}
@@ -568,7 +472,6 @@ namespace wheels
 				logger::info("wheels: slot {}'s picture not updated - no row has shown {} this session", a_slot + 1, inventory::NameOf(id));
 				return;
 			}
-			g_nextEquipCheck = {};   // at once, not on the next 100 ms tick
 			AssertEquipment();
 		}
 
@@ -645,7 +548,6 @@ namespace wheels
 				}
 			} else {
 				inventory::ClearKey(gone);
-				g_takenOff[gone] = a_slot;   // put back on another slot by the caller (a move) takes it off this list again
 				if (wasActive || slot.active < 0) {
 					slot.active = -1;
 					if (!slot.entries.empty()) {
@@ -688,7 +590,6 @@ namespace wheels
 						}
 					}
 				}
-				g_takenOff.erase(id);
 				it = g_leaving.erase(it);
 			}
 			if (any) {
@@ -736,7 +637,6 @@ namespace wheels
 					}
 				}
 				g_carriedSeen.erase(id);
-				g_takenOff.erase(id);
 				g_leaving.erase(id);
 			}
 			Save();
@@ -771,9 +671,6 @@ namespace wheels
 			}
 			if (a_wheel == kEquip && !inventory::SetKey(a_id, a_slot)) {
 				return false;
-			}
-			if (a_wheel == kEquip) {
-				g_takenOff.erase(a_id);
 			}
 			slot.entries.push_back(a_id);
 			slot.active = static_cast<int>(slot.entries.size()) - 1;
@@ -842,7 +739,6 @@ namespace wheels
 				// pressed on an entry the slot holds but is not showing: out it goes, the shown one stays
 				slot.entries.erase(slot.entries.begin() + idx);
 				inventory::ClearKey(a_arrived);
-				g_takenOff[a_arrived] = a_slot;
 				slot.active = previous ? IndexOf(slot, previous) : -1;
 				if (previous) {
 					inventory::SetKey(previous, a_slot);
@@ -858,14 +754,11 @@ namespace wheels
 				const auto out = slot.entries[at];
 				slot.entries[at] = a_arrived;
 				slot.active = at;
-				g_takenOff[out] = a_slot;
-				g_takenOff.erase(a_arrived);
 				logger::info("wheels: Equipment slot {} is full ({} entries) - {} REPLACES {} (entry {})", a_slot + 1, Cap(), inventory::NameOf(a_arrived),
 					inventory::NameOf(out), at + 1);
 			} else {
 				slot.entries.push_back(a_arrived);
 				slot.active = static_cast<int>(slot.entries.size()) - 1;
-				g_takenOff.erase(a_arrived);
 				logger::info("wheels: {} ADDED to Equipment slot {} - now {} entr{}, it is the active one (the others stay in the slot)",
 					inventory::NameOf(a_arrived), a_slot + 1, slot.entries.size(), slot.entries.size() == 1 ? "y" : "ies");
 			}
@@ -1900,8 +1793,11 @@ logger::info("wheels: the {} wheel's own button - it is the active wheel", Name(
 		auto*      before = player->selectedSpell;
 		logger::info("wheels: Magic slot {} used - {} is now the selected spell ({})", a_slot + 1, rows::SpellName(formID),
 			before == static_cast<RE::MagicItem*>(spell) ? "it was already" : before ? "another spell was" : "none was");
-		if (before != static_cast<RE::MagicItem*>(spell)) {
-			testhread::Post([formID] {
+		{
+			const bool changed = before != static_cast<RE::MagicItem*>(spell);
+			testhread::Post([formID, changed] {
+				inventory::SweepNativeSpellKeys();   // the game's own key must find no spell of its own to select once we have chosen
+				if (!changed) return;
 				auto* pc = RE::PlayerCharacter::GetSingleton();
 				auto* sp = RE::TESForm::LookupByID<RE::SpellItem>(formID);
 				if (!pc || !sp) return;
