@@ -6,6 +6,7 @@
 #include "PEHook.h"
 #include "QuickKeys.h"
 #include "Reflect.h"
+#include "RingOverlay.h"
 #include "Rows.h"
 #include "SlotCounts.h"
 #include "Ui.h"
@@ -345,8 +346,10 @@ namespace magicwheel
 			Show(wheel, mode);
 			if (auto* img = GameImage(wheel)) {
 				slotcounts::Show(img, mode == 2 ? wheels::Wheel::kAmmo : mode == 1 ? wheels::Wheel::kEquipment : wheels::Wheel::kMagic);   // "2/3" on each slot
+				if (mode == 2) ringoverlay::Hide(); else ringoverlay::Show(img, mode == 1 ? ringoverlay::Kind::kEquipment : ringoverlay::Kind::kMagic);   // Magic blue, Inventory red
 			} else {
 				slotcounts::Hide();
+				ringoverlay::Hide();
 			}
 			return;
 		}
@@ -355,11 +358,14 @@ namespace magicwheel
 			HideSpellKeys(wheel);
 			if (auto* img = GameImage(wheel)) {
 				slotcounts::Show(img);   // "3/5" on each slot
+				ringoverlay::Show(img, ringoverlay::Kind::kEquipment);   // the Equipment wheel is red
 			} else {
 				slotcounts::Hide();
+				ringoverlay::Hide();
 			}
 		} else {
 			slotcounts::Hide();
+				ringoverlay::Hide();
 		}
 	}
 
