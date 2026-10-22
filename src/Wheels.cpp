@@ -1255,24 +1255,6 @@ namespace wheels
 			logger::info("wheels: the HUD's spell picture set to {} and its change broadcast", pe::Utf8(icon->GetFName().ToString()));
 		}
 
-		// TEMP-DIAG: bounded to eight Magic choices, three follow-up reads each.
-		int g_magicDiagChoices = 0, g_magicDiagReads = 0;
-		std::uint32_t g_magicDiagForm = 0;
-		ULONGLONG g_magicDiagAt = 0;
-		void CheckMagicDiagnostic()
-		{
-			if (!g_magicDiagReads || GetTickCount64() < g_magicDiagAt) return;
-			g_magicDiagAt = GetTickCount64() + 300;
-			--g_magicDiagReads;
-			auto* pc = RE::PlayerCharacter::GetSingleton();
-			auto* sp = RE::TESForm::LookupByID<RE::SpellItem>(g_magicDiagForm);
-			if (!pc || !sp) return;
-			const auto status = testhread::GetStatus();
-			logger::warn("TEMP-DIAG magic after-close requested=0x{:08X} selectedMatches={} currentMatches={} radial={} pointed={} selectedPtr=0x{:X} TESinstalled={} TEScalls={} queued={}",
-				g_magicDiagForm, pc->selectedSpell == static_cast<RE::MagicItem*>(sp), pc->currentSpell == static_cast<RE::MagicItem*>(sp),
-				quickkeys::RadialOpen(), quickkeys::PointedSlot(), reinterpret_cast<std::uintptr_t>(pc->selectedSpell), status.installed, status.calls, status.queued);
-		}
-
 		void CheckHud()
 		{
 			if (g_hudCheckAt == std::chrono::steady_clock::time_point{} || std::chrono::steady_clock::now() < g_hudCheckAt) return;
@@ -1560,7 +1542,6 @@ namespace wheels
 	void Tick(bool a_assignHeld)
 	{
 		CheckHud();
-		CheckMagicDiagnostic();
 		AssertMagic();
 		DriveUse();
 		HammerInvTick();
@@ -1810,22 +1791,11 @@ logger::info("wheels: the {} wheel's own button - it is the active wheel", Name(
 		// SetCurrentSpell (the caster's spell in use, which the menu never sets) took the sound away.
 		const auto formID = spell->GetFormID();
 		auto*      before = player->selectedSpell;
-		const bool diagnostic = g_magicDiagChoices++ < 8;   // TEMP-DIAG
-		if (diagnostic) {
-			g_magicDiagForm = formID;
-			g_magicDiagReads = 3;
-			g_magicDiagAt = GetTickCount64() + 150;
-			const auto status = testhread::GetStatus();
-			logger::warn("TEMP-DIAG magic request slot={} form=0x{:08X} name={} selectedMatches={} radial={} pointed={} TESinstalled={} TEScalls={} queued={}",
-				a_slot + 1, formID, rows::SpellName(formID), before == static_cast<RE::MagicItem*>(spell), quickkeys::RadialOpen(),
-				quickkeys::PointedSlot(), status.installed, status.calls, status.queued);
-		}
-
 		logger::info("wheels: Magic slot {} used - {} is now the selected spell ({})", a_slot + 1, rows::SpellName(formID),
 			before == static_cast<RE::MagicItem*>(spell) ? "it was already" : before ? "another spell was" : "none was");
 		{
 			const bool changed = before != static_cast<RE::MagicItem*>(spell);
-			testhread::Post([formID, diagnostic, changed] {
+			testhread::Post([formID, changed] {
 				inventory::SweepNativeSpellKeys();   // the game's own key must find no spell of its own to select once we have chosen
 				if (!changed) return;
 				auto* pc = RE::PlayerCharacter::GetSingleton();
@@ -1833,9 +1803,6 @@ logger::info("wheels: the {} wheel's own button - it is the active wheel", Name(
 				if (!pc || !sp) return;
 				static REL::Relocation<void (*)(RE::PlayerCharacter*, RE::MagicItem*)> setSelected{ REL::ID(406972) };
 				setSelected(pc, static_cast<RE::MagicItem*>(sp));
-				if (diagnostic) logger::warn("TEMP-DIAG magic TES-applied form=0x{:08X} selectedMatches={} thread={}", formID,
-					pc->selectedSpell == static_cast<RE::MagicItem*>(sp), GetCurrentThreadId());
-
 			});
 		}
 		g_hudCheckAt = std::chrono::steady_clock::now() + 500ms;
