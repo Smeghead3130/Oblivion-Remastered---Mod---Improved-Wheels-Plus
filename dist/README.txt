@@ -1,6 +1,6 @@
 Improved Wheel - Keyboard and Better Controller Support
 =======================================================
-Version 2.1.0
+Version 2.2.0
 
 A modified build of Improved Wheel Menu (Oblivion Remastered) by ApocryphaRealm (GPL-3.0). It replaces the original
 ImprovedWheelMenu.dll and keeps its file and setting names, so install it instead of the original, not beside it.
@@ -9,10 +9,13 @@ What this build adds to the original 1.0.1 is listed under ADDED IN THIS BUILD b
 
 Oblivion Remastered's own quick-key radial, made into a full wheel menu: eight slots that each hold several items, a
 Magic wheel of its own for spells, and an ammo wheel for your arrows while a bow is held. The game's own radial, button
-prompts and quick keys are used throughout; nothing of the vanilla interface is replaced.
+prompts and quick keys are used throughout; the Inventory and Magic wheel pictures, pointers and title colors have a new look.
 
 ADDED IN THIS BUILD
 -------------------
+  * NEW LOOK: blue Magic wheel with a gold pointer and title outline; red Inventory wheel with a silver pointer and title outline.
+    Also applies to the assignment panels. [Theme] bMagicWheel=1 and bInventoryWheel=1 enable each look separately; 0 restores the native look.
+    Missing wheel pictures retain the native wheel; the new overlays step aside while a game message is up.
   * KEYBOARD SUPPORT, the main addition: the whole wheel menu works from the keyboard, with or without a controller. Every key is
     configurable in the [Keyboard] section of ImprovedWheelMenu.ini (and so is every other setting): each key presses the controller
     control it is named for, so every rule below works from the keyboard. Defaults: R toggles the gameplay wheel; Q / E switch wheels;

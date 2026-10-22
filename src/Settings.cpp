@@ -83,6 +83,8 @@ namespace settings
 			v.armourOnWheel = ReadInt(ini, L"Wheel", L"bArmourOnWheel", v.armourOnWheel ? 1 : 0, 0, 1) != 0;
 			v.rememberWheel = ReadInt(ini, L"Wheel", L"bRememberWheel", v.rememberWheel ? 1 : 0, 0, 1) != 0;
 			v.showSlotCapacity = ReadInt(ini, L"Wheel", L"bShowSlotCapacity", v.showSlotCapacity ? 1 : 0, 0, 1) != 0;
+			v.theme.magic = ReadInt(ini, L"Theme", L"bMagicWheel", 1, 0, 1) != 0;
+			v.theme.inventory = ReadInt(ini, L"Theme", L"bInventoryWheel", 1, 0, 1) != 0;
 			v.chooseOnClose = ReadInt(ini, L"Wheel", L"bChooseOnClose", v.chooseOnClose ? 1 : 0, 0, 1) != 0;
 			v.centreRestSnap = ReadInt(ini, L"Wheel", L"bCentreRestSnap", v.centreRestSnap, 0, 1) != 0;
 			v.restSnapMs = ReadInt(ini, L"Wheel", L"uRestSnapMs", v.restSnapMs, 30, 1000);

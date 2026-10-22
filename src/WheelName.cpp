@@ -8,6 +8,7 @@
 #include "PEHook.h"
 #include "Reflect.h"
 #include "Rows.h"
+#include "Settings.h"
 #include "SlotCounts.h"
 #include "Ui.h"
 #include "Wheels.h"
@@ -27,7 +28,11 @@ namespace wheelname
 		double      g_x = -1e9, g_y = -1e9;
 
 		constexpr float kTitleInk[4] = { 0.80f, 0.62f, 0.28f, 1.0f };   // the gold of the wheel's ring
-		constexpr float kTitleOutline[4] = { 0.0f, 0.0f, 0.0f, 1.0f };   // black round it, so it reads on any scene
+		constexpr float kTitleInkRed[4] = { 0.515f, 0.010f, 0.013f, 1.0f };    // the Equipment wheel's red (the redesign's crimson, lifted so it reads on a dark scene), linear
+		constexpr float kTitleInkBlue[4] = { 0.013f, 0.090f, 0.644f, 1.0f };   // the Magic wheel's blue (the redesign's navy, lifted), linear
+		constexpr float kTitleOutline[4] = { 0.0f, 0.0f, 0.0f, 1.0f };   // black round it, so it reads on any scene (the Ammo wheel)
+		constexpr float kTitleOutlineGold[4] = { 0.831f, 0.429f, 0.038f, 1.0f };     // the Magic wheel's gold rim, linear
+		constexpr float kTitleOutlineSilver[4] = { 0.610f, 0.644f, 0.730f, 1.0f };   // the Equipment wheel's silver rim, linear
 
 		void White(UE::UObject* a_label)
 {
@@ -42,6 +47,18 @@ namespace wheelname
 			const float shadow[4] = { 0.0f, 0.0f, 0.0f, 0.55f };
 			ui::CallFirst(a_label, L"SetShadowColorAndOpacity", shadow, sizeof(shadow));
 			ui::Vec2(a_label, L"SetShadowOffset", 1.0, 1.0);
+		}
+
+		void Ink(UE::UObject* a_label, const float (&a_ink)[4])
+		{
+			struct SlateColor
+			{
+				float        rgba[4];
+				std::uint8_t rule;
+				std::uint8_t pad[7];
+			} c{ { a_ink[0], a_ink[1], a_ink[2], a_ink[3] }, 0, {} };
+			ui::CallFirst(a_label, L"SetColor", &c, sizeof(c));
+			ui::CallFirst(a_label, L"SetColorAndOpacity", &c, sizeof(c));
 		}
 
 		bool Build()
@@ -67,7 +84,7 @@ namespace wheelname
 			vp.Set<std::int32_t>("ZOrder", 60);   // above the menus' own layers
 			vp.Run();
 			White(label);
-			uix::ApplyBoldFont(label, 30.0, kTitleOutline, 1);
+			uix::ApplyBoldFont(label, 30.0, kTitleOutline, 2);   // the owner, 2026-10-22: one pixel thicker
 ui::Visible(root, false);
 			g_root = reflect::Hold(root);
 			g_label = reflect::Hold(label);
@@ -90,7 +107,7 @@ ui::Visible(root, false);
 			a_label->ProcessEvent(fn, buf.data());
 			text->~FText();
 			White(a_label);
-			uix::ApplyBoldFont(a_label, 0, kTitleOutline, 1);
+			uix::ApplyBoldFont(a_label, 0, kTitleOutline, 2);
 		}
 
 		// the game's centre text set to a name: a string-table key (LOC_FN_...) through the game's own table, as the UI shows
@@ -274,6 +291,10 @@ ui::Visible(root, false);
 		if (g_text != name) {
 			SetText(label, name);
 			g_text = name;
+			const auto&            theme = settings::Get().theme;   // INI [Theme]: a wheel switched off keeps the gold title with the black outline
+			const std::string_view title = (std::string_view(name) == "Inventory Wheel" && !theme.inventory) || (std::string_view(name) == "Magic Wheel" && !theme.magic) ? std::string_view("Ammo Wheel") : std::string_view(name);
+			Ink(label, title == "Inventory Wheel" ? kTitleInkRed : title == "Magic Wheel" ? kTitleInkBlue : kTitleInk);   // SetText puts the gold back
+			uix::ApplyBoldFont(label, 0, title == "Inventory Wheel" ? kTitleOutlineSilver : title == "Magic Wheel" ? kTitleOutlineGold : kTitleOutline, 2);   // the rim's metal round the letters (the owner, 2026-10-22)
 		}
 		const double px = x + w * 0.5, py = y - 6.0;   // centred over the wheel, just above its top
 		if (std::abs(px - g_x) > 0.5 || std::abs(py - g_y) > 0.5) {
