@@ -95,7 +95,7 @@ Upgrading from 1.1.4? Existing ini bindings are retained; use the supplied [Keyb
 INSTALLATION
 ------------
   * Everything goes under OblivionRemastered\Binaries\Win64\OBSE\Plugins\: ImprovedWheelMenu.dll, .ini and the
-    ImprovedWheelMenu folder (the favourite star's fill picture).
+    ImprovedWheelsPlus folder (the favourite star's fill picture).
   * Install with your mod manager or drop the OblivionRemastered folder over the game's own. Mod Organizer 2 users
     need the folder installed at the game's root (Root Builder or an equivalent).
 

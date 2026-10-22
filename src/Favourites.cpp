@@ -46,7 +46,7 @@ namespace favourites
 		{
 			if (auto* t = reflect::Get(g_fillTexture)) return t;
 			if (g_fillFailed) return nullptr;
-			const auto path = settings::PluginFolder() / L"ImprovedWheelMenu" / L"FavouriteStarFill.png";
+			const auto path = settings::PluginFolder() / L"ImprovedWheelsPlus" / L"FavouriteStarFill.png";
 			static auto* lib = ui::Class(L"/Script/Engine.KismetRenderingLibrary");
 			ui::Call c(lib ? lib->GetDefaultObject(false) : nullptr, L"ImportFileAsTexture2D");
 			void* file = c.At("Filename");
