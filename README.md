@@ -11,9 +11,10 @@ A fork of [Improved Wheel Menu](https://github.com/ApocryphaRealm/ImprovedWheelM
 ## Keyboard defaults in 1.1.5
 
 - **R:** open the gameplay wheel; press again to cancel. In Inventory/Magic, R opens the native assign panel.
+- **F6 / F7 / F8:** hold to open Equipment / Magic / Ammo directly (Ammo requires a bow).
 - **Q / E:** previous / next wheel.
 - **Z / C:** previous / next entry; **right click** also advances an entry.
-- **Esc:** cancel the wheel or assign panel. **Mouse / left click:** point / use.
+- **Mouse / left click:** point / use.
 - **F:** favorite; hold **X** in the assign panel to clear a slot.
 - **1-8 / Numpad 1-8:** use a slot in gameplay or assign the highlighted menu item/spell.
 
@@ -45,3 +46,5 @@ The DLL is written to `build/windows/x64/releasedbg/ImprovedWheelMenu.dll`; the 
 GPL-3.0-or-later ([`dist/LICENSE`](dist/LICENSE), [`dist/NOTICE.md`](dist/NOTICE.md)). Built on
 [CommonLibOB64](https://github.com/libxse/commonlibob64) and its plugin template (GPL-3.0, with the modding exception in
 `EXCEPTIONS`); other linked components are listed in [`dist/THIRD_PARTY_NOTICES.md`](dist/THIRD_PARTY_NOTICES.md).
+
+While an Equipment or Magic assignment panel is open, Z / C or LT / RT cycle entries in the pointed slot; right-click advances. Triggers do not switch menu tabs while the panel is open.

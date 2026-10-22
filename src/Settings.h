@@ -45,16 +45,16 @@ namespace settings
 		{
 			bool enabled = true;
 			int  lb = 'R', rb = 0xDC, lt = 'Z', rt = 'C';                    // R, backslash, Z, C
-			int  a = 0, b = VK_ESCAPE, x = 'X', y = 0;                                 // X clears an assign-panel slot
+			int  a = 0, x = 'X', y = 0;                                 // X clears an assign-panel slot
 			int  dpadUp = 0, dpadDown = 0, dpadLeft = 'Q', dpadRight = 'E';   // Q and E
 			int  l3 = 0, r3 = 0, start = 0, select = 'F';                      // R is the native panel key; F = Select
 			int  stickUp = 0, stickDown = 0, stickLeft = 0, stickRight = 0;     // the right stick (the mouse points otherwise)
 			std::array<int, 8> slots{ 0x61, 0x62, 0x63, 0x64, 0x65, 0x66, 0x67, 0x68 };      // Numpad 1-8: slot N (gameplay: use it; Inventory / Magic menu: assign the highlighted row to it)
 			std::array<int, 8> slotsAlt{ 0x31, 0x32, 0x33, 0x34, 0x35, 0x36, 0x37, 0x38 };   // the number row 1-8, the same
-			int  equipmentWheel = 0, magicWheel = 0, ammoWheel = 0;   // a key that opens the radial straight on that wheel (0 = none)
+			int equipmentWheel = VK_F6, magicWheel = VK_F7, ammoWheel = VK_F8;   // hold to open that wheel directly
 			bool padWhenNone = true;        // with no controller connected, hand the game an idle connected pad so it polls every frame and the keys reach the rules
 			bool wheelToggle = true;       // gameplay wheel key toggles; menu R remains native
-			int nextEntryMouse = VK_RBUTTON; // forward entry on right click, only on HUD radial
+			int nextEntryMouse = VK_RBUTTON; // forward entry on right click, on HUD radial and assign panels
 			bool replaceQuickKeys = true;   // take the game's own keyboard quick keys (IA_Game_QuickKeys_Keyboard_N) off the keys, so only the plugin's slot keys act
 		} keyboard;
 		int  favouriteButton = 0x0020; // [Controller] uFavouriteButton: XInput mask that favourites in the inventory / magic menu (32 = Select/Back; 0x8000 = Y, the original, with the game's sort moved to the left stick click; 0 = none)

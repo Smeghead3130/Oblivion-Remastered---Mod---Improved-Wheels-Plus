@@ -22,6 +22,8 @@ namespace
 	}
 }
 
+int ReviewFixTests();
+
 int main()
 {
 	using textutil::IconAssetPath;
@@ -94,5 +96,5 @@ int main()
 	}
 
 	std::printf("%d checks, %d failed\n", g_run, g_failed);
-	return g_failed == 0 ? 0 : 1;
+	return (ReviewFixTests() == 0 && g_failed == 0) ? 0 : 1;
 }

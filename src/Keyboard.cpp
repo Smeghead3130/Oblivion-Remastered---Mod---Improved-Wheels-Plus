@@ -364,10 +364,9 @@ namespace keyboard
 		// directions"):
 		//   use    - hold the wheel button until the radial is up, then the stick at the slot until it is pointed, then A
 		//   assign - (the panel opened with L3 if it was not up) the stick at the slot until pointed, then A, (L3 again)
-		//   close  - L3 held, which closes the assign panel in the Inventory / Magic menu (the Esc key: a virtual B did nothing there)
 		struct Script
 		{
-			enum Kind { kNone, kUse, kAssign, kClick, kClose } kind = kNone;
+			enum Kind { kNone, kUse, kAssign, kClick } kind = kNone;
 			int       slot = 0;      // 0..7
 			int       phase = 0;
 			bool      openedPanel = false;
@@ -406,12 +405,6 @@ namespace keyboard
 			const auto stick = [&] { a_pad.sThumbRX = rx; a_pad.sThumbRY = ry; };
 			const bool pointed = quickkeys::PointedSlot() == g_script.slot + 1;
 			const auto menu = menus::Active();
-			if (g_script.kind == Script::kClose) {
-				a_pad.wButtons |= XINPUT_GAMEPAD_LEFT_THUMB;
-				++g_script.phase;   // reads that carried the L3: the game reads the pad slowly in a menu, and a press carried by fewer than three reads is often missed (the owner, 2026-10-21: Esc took ten presses)
-				if ((elapsed >= 120 && g_script.phase >= 3) || elapsed > 500) End("panel closed with the cancel key");
-				return g_script.kind != Script::kNone;
-			}
 			if (g_script.kind == Script::kClick) {   // a click is the A button on the slot the mouse already points (the game points by the mouse's angle, as by the stick's)
 				const bool open = menu == menus::Menu::kInventory || menu == menus::Menu::kMagic ? PanelUp(menu) : quickkeys::RadialOpen();
 				if (!open) {
@@ -570,12 +563,6 @@ namespace keyboard
 				g_nativeWheelSeen = false;
 			}
 			if (g_nativeWheelHeld && radial) g_nativeWheelSeen = true;
-			{   // the cancel key (Esc): the same as a second R - B and the key-up of the held native R (B alone left the radial up)
-				static bool s_bPrev = false;
-				const bool  bDown = k.b > 0 && Down(k.b) && !Typing();
-				if (bDown && !s_bPrev && g_nativeWheelHeld && radial) g_nativeWheelCancel = true;
-				s_bPrev = bDown;
-			}
 			if (g_nativeWheelCancel.exchange(false)) {
 				if (radial) { a_pad.wButtons |= XINPUT_GAMEPAD_B; any = true; }
 				ReleaseNativeWheel();
@@ -604,7 +591,6 @@ namespace keyboard
 		if (radial && !quickkeys::GameMessageUp()) {
 			press(k.rb, XINPUT_GAMEPAD_RIGHT_SHOULDER);
 			press(k.a, XINPUT_GAMEPAD_A);
-			press(k.b, XINPUT_GAMEPAD_B);
 			press(k.dpadLeft, XINPUT_GAMEPAD_DPAD_LEFT);
 			press(k.dpadRight, XINPUT_GAMEPAD_DPAD_RIGHT);
 			if (Down(k.lt)) { a_pad.bLeftTrigger = 255; any = true; }
@@ -626,34 +612,11 @@ namespace keyboard
 				press(k.a, XINPUT_GAMEPAD_A);
 				press(k.dpadLeft, XINPUT_GAMEPAD_DPAD_LEFT);
 				press(k.dpadRight, XINPUT_GAMEPAD_DPAD_RIGHT);
-			}
-		}
-		{   // the cancel key (Esc) with the assign panel up in the Inventory / Magic menu closes the panel: the game closes it on L3, a virtual B did nothing
-			static bool      s_cancelPrev = false;
-			static ULONGLONG s_retryAt = 0;   // the panel is looked at again then: still up after the close script, the game missed it
-			static int       s_tries = 0;
-			const bool       cancel = k.b > 0 && Down(k.b) && panel && !Typing();
-			const ULONGLONG  now = GetTickCount64();
-			if (!panel) {
-				s_retryAt = 0;
-				s_tries = 0;
-			}
-			if (cancel && !s_cancelPrev && g_script.kind == Script::kNone) {
-				g_script = { Script::kClose, 0, 0, false, now };
-				s_tries = 1;
-				s_retryAt = now + 600;
-				logger::info("keyboard: cancel key in the {} with the panel up - closing the panel", menus::Name(context));
-			} else if (s_retryAt && now >= s_retryAt) {
-				if (panel && g_script.kind == Script::kNone && s_tries < 3) {
-					g_script = { Script::kClose, 0, 0, false, now };
-					++s_tries;
-					s_retryAt = now + 600;
-					logger::info("keyboard: the panel is still up {} ms after the cancel key - closing it again (try {} of 3)", 600, s_tries);   // the game often missed the first L3 (the owner, 2026-10-21: ten Esc presses)
-				} else {
-					s_retryAt = 0;
+				if (!quickkeys::GameMessageUp()) {
+					if (Down(k.lt)) { a_pad.bLeftTrigger = 255; any = true; }
+					if (Down(k.rt) || mouseDown) { a_pad.bRightTrigger = 255; any = true; }
 				}
 			}
-			s_cancelPrev = cancel;
 		}
 		if (menus::AnyOpen() && !radial) press(k.select, XINPUT_GAMEPAD_BACK);
 		// the right stick: four keys, two together make a diagonal

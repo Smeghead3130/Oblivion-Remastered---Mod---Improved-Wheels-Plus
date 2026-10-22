@@ -16,7 +16,8 @@ ADDED IN THIS BUILD
   * KEYBOARD SUPPORT, the main addition: the whole wheel menu works from the keyboard, with or without a controller. Every key is
     configurable in the [Keyboard] section of ImprovedWheelMenu.ini (and so is every other setting): each key presses the controller
     control it is named for, so every rule below works from the keyboard. Defaults: R toggles the gameplay wheel; Q / E switch wheels;
-    Z / C step entries; right click advances an entry; Esc cancels; backslash uses; F favourites;
+    Hold F6 / F7 / F8 to open Equipment / Magic / Ammo directly (Ammo requires a bow).
+    Z / C step entries; right click advances an entry; backslash uses; F favourites;
     native menu R opens assignment; hold X clears a slot. The number keys 1-8 and Numpad 1-8
     are slot keys (in gameplay they point at that slot and use it; in the Inventory / Magic menu they assign the highlighted item or spell to it).
   * Hold X (0.6 s) on a pointed slot of the assign panel to clear the whole slot; L3 opens the assign panel.
@@ -67,7 +68,7 @@ WHAT YOU GET
     names the pointed spell or item.
   * Keyboard (INI [Keyboard], every key rebindable): the keyboard is a virtual controller - each key presses the
     controller control it is named for, so every rule here works from the keyboard. Defaults: R toggles the gameplay wheel, Q / E switch wheels,
-    Z / C step entries, right click advances an entry, Esc cancels, backslash or left click uses,
+    Z / C step entries, right click advances an entry, backslash or left click uses,
     F favourites, native menu R opens assignment, and hold X clears a slot. Number keys and Numpad 1-8
     use slots in gameplay or assign the highlighted item/spell in menus. Existing ini files retain their bindings.
   * The Magic wheel: a separate wheel for spells, always drawn as itself. A pick makes the spell the one the cast

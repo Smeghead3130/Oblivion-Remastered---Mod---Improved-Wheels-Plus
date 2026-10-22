@@ -662,8 +662,13 @@ namespace pad
 					}
 					out &= ~(XINPUT_GAMEPAD_DPAD_LEFT | XINPUT_GAMEPAD_DPAD_RIGHT);
 					const auto wheel = menu == menus::Menu::kMagic ? wheels::Wheel::kMagic : wheels::Wheel::kEquipment;
-					if (pressed & XINPUT_GAMEPAD_DPAD_LEFT) { wheels::CycleEntry(wheel, PointedKey(), -1); }
-					if (pressed & XINPUT_GAMEPAD_DPAD_RIGHT) { wheels::CycleEntry(wheel, PointedKey(), +1); }
+					// Assign-panel triggers belong to entry cycling, never to the menu's tab navigation.
+					if (!quickkeys::GameMessageUp()) {
+						if ((pressed & XINPUT_GAMEPAD_DPAD_LEFT) || ltPressed) { wheels::CycleEntry(wheel, PointedKey(), -1); }
+						if ((pressed & XINPUT_GAMEPAD_DPAD_RIGHT) || rtPressed) { wheels::CycleEntry(wheel, PointedKey(), +1); }
+					}
+					a_pad.bLeftTrigger = 0;
+					a_pad.bRightTrigger = 0;
 				}
 			} else {
 				// ---- any other menu (a container or barter list): a favourite cannot be sold or handed over. The HUD radial
