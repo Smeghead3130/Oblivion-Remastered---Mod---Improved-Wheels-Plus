@@ -149,7 +149,7 @@ namespace settings
 				k.wheelToggle = ReadInt(ini, L"Keyboard", L"bWheelToggle", k.wheelToggle ? 1 : 0, 0, 1) != 0;
 				k.padWhenNone = ReadInt(ini, L"Keyboard", L"bVirtualPadWhenNone", k.padWhenNone ? 1 : 0, 0, 1) != 0;
 				k.replaceQuickKeys = ReadInt(ini, L"Keyboard", L"bReplaceQuickKeys", k.replaceQuickKeys ? 1 : 0, 0, 1) != 0;
-				logger::info("settings: keyboard cancel binding removed; direct wheel shortcuts and panel entry cycling enabled");
+				logger::info("settings: keyboard cancel binding removed; direct slot activation, wheel shortcuts and panel entry cycling enabled");
 				logger::info("settings: keyboard as a virtual controller {} (LB 0x{:02X}, RB 0x{:02X}, LT 0x{:02X}, RT 0x{:02X}, Select 0x{:02X}, slot 1 0x{:02X})",
 					k.enabled ? "on" : "off", k.lb, k.rb, k.lt, k.rt, k.select, k.slots[0]);
 			}

@@ -111,39 +111,6 @@ namespace keyboard
 		}
 
 
-		// A slot key must not feed the game a gamepad: the injected wheel button and right stick each made the game drop the Caps Lock walk toggle
-		// (measured 2026-10-20: the controller byte at +0xA59 of VEnhancedAltarPlayerController went 1>0 on the first read that carried LB, and, with
-		// the radial opened by the native R key, on the first read that carried the stick; the R + mouse click path, whose only injected input is A,
-		// never did; restoring that byte alone did not bring the walking back). So, with the native R toggle on, the script opens the radial with a
-		// real R key-down, points by moving the mouse cursor along the slot's direction (the game points by the cursor's angle round the middle)
-		// and presses only A - the same inputs as R, pointing and a click.
-		bool PostNativeWheelDown()
-		{
-			const auto& k = settings::Get().keyboard;
-			if (!k.wheelToggle || k.lb != 'R' || !g_keyboardWindow || !IsWindow(g_keyboardWindow) || !g_nativeWheelAllowed || g_nativeWheelHeld) return false;
-			return PostMessageW(g_keyboardWindow, WM_KEYDOWN, 'R', static_cast<LPARAM>(0x00130001)) != 0;
-		}
-
-		POINT g_cursorBefore{};
-		bool  g_cursorSaved = false;
-
-		void PointCursorAtSlot(int a_slot0)   // the cursor at a_slot0 (0-7, clockwise from the top) of the screen's middle, where the wheel is
-		{
-			RECT rc{};
-			if (!g_keyboardWindow || !GetClientRect(g_keyboardWindow, &rc) || rc.bottom <= 0) return;
-			if (!g_cursorSaved) g_cursorSaved = GetCursorPos(&g_cursorBefore) != 0;
-			const double angle = a_slot0 * 45.0 * 3.14159265358979323846 / 180.0, radius = rc.bottom * 0.22;
-			POINT        p{ rc.right / 2 + static_cast<LONG>(std::lround(std::sin(angle) * radius)), rc.bottom / 2 - static_cast<LONG>(std::lround(std::cos(angle) * radius)) };
-			ClientToScreen(g_keyboardWindow, &p);
-			SetCursorPos(p.x, p.y);
-		}
-
-		void RestoreCursor()
-		{
-			if (g_cursorSaved) SetCursorPos(g_cursorBefore.x, g_cursorBefore.y);
-			g_cursorSaved = false;
-		}
-
 		bool GameHasFocus()
 		{
 			const HWND fg = GetForegroundWindow();
@@ -362,11 +329,11 @@ namespace keyboard
 		// A slot key's script, advanced a read at a time from what the game shows (never blind timing: a stick held toward a slot
 		// before the radial is up turns the camera that way instead - the owner, 2026-10-16: "the character looks in those 8
 		// directions"):
-		//   use    - hold the wheel button until the radial is up, then the stick at the slot until it is pointed, then A
+		//   gameplay slot keys activate stored entries directly; only mouse-click and assign scripts remain
 		//   assign - (the panel opened with L3 if it was not up) the stick at the slot until pointed, then A, (L3 again)
 		struct Script
 		{
-			enum Kind { kNone, kUse, kAssign, kClick } kind = kNone;
+			enum Kind { kNone, kAssign, kClick } kind = kNone;
 			int       slot = 0;      // 0..7
 			int       phase = 0;
 			bool      openedPanel = false;
@@ -379,12 +346,9 @@ namespace keyboard
 			g_script.at = GetTickCount64();
 		}
 
-		ULONGLONG g_useScriptEnded = 0;
 
 		void End(const char* a_why)
 		{
-			if (g_script.kind == Script::kUse) g_useScriptEnded = GetTickCount64();
-			if (g_script.kind == Script::kUse && g_script.openedPanel) { ReleaseNativeWheel(); RestoreCursor(); }   // openedPanel: this script pressed the native R
 			logger::info("keyboard: slot key script ended ({})", a_why);
 			g_script.kind = Script::kNone;
 		}
@@ -399,7 +363,6 @@ namespace keyboard
 		{
 			if (g_script.kind == Script::kNone) return false;
 			const ULONGLONG elapsed = GetTickCount64() - g_script.at;
-			const WORD      wheel = static_cast<WORD>(settings::Get().wheelButton ? settings::Get().wheelButton : XINPUT_GAMEPAD_DPAD_DOWN);
 			SHORT           rx = 0, ry = 0;
 			SlotStick(g_script.slot + 1, rx, ry);
 			const auto stick = [&] { a_pad.sThumbRX = rx; a_pad.sThumbRY = ry; };
@@ -414,44 +377,7 @@ namespace keyboard
 				a_pad.wButtons |= XINPUT_GAMEPAD_A;
 				++g_script.phase;   // reads that carried the A: at least three, so the rules see a press even when the game reads the pad slowly
 				if ((elapsed >= 50 && g_script.phase >= 3) || elapsed > 400) End("clicked");
-} else if (g_script.kind == Script::kUse) {
-				if (g_script.phase >= 1 && !quickkeys::RadialOpen()) {
-					End("the radial closed");
-					return false;
-				}
-				switch (g_script.phase) {
-				case 0:   // the wheel button, until the radial shows
-					g_mouseRadial = true;
-					g_mouseRadialSeen = false;
-					wheels::KeepActive();
-					if (!g_script.openedPanel && !quickkeys::RadialOpen()) g_script.openedPanel = PostNativeWheelDown();
-					if (!g_script.openedPanel) a_pad.wButtons |= wheel;   // no native R toggle: the wheel button, as before
-					if (quickkeys::RadialOpen() && elapsed >= 10) Next(1);
-					else if (elapsed > 900) End("the radial did not open");
-					break;
-				case 1:   // the stick (or the cursor) at the slot, until it is pointed
-					if (g_script.openedPanel) {
-						PointCursorAtSlot(g_script.slot);
-					} else {
-						a_pad.wButtons |= wheel;
-						stick();
-					}
-					if ((pointed && elapsed >= 25) || elapsed > 400) Next(2);
-					break;
-				case 2:   // A: uses the slot and closes the wheel
-					if (g_script.openedPanel) {
-						PointCursorAtSlot(g_script.slot);
-						a_pad.wButtons |= XINPUT_GAMEPAD_A;
-					} else {
-						a_pad.wButtons |= wheel | XINPUT_GAMEPAD_A;
-						stick();
-					}
-					if (elapsed >= 50) Next(3);
-					break;
-				default:
-					if (elapsed >= 40) End("used");
-					break;
-				}
+
 			} else {
 				switch (g_script.phase) {
 				case 0:   // L3 opens the panel when it is not up
@@ -629,7 +555,7 @@ namespace keyboard
 			any = true;
 		}
 		// a slot key (the number row or Numpad 1-8; the game's own quick keys are taken off them): in gameplay it uses slot N at
-		// once; in the Inventory / Magic menu it assigns the highlighted row to slot N through the assign panel - the controller's
+		// directly without opening the radial; in the Inventory / Magic menu it assigns the highlighted row to slot N through the assign panel - the controller's
 		// own flow, so the Magic menu fills the Magic wheel and the Inventory the Equipment wheel (see RunScript)
 		for (int i = 0; i < 8; ++i) {
 			bool fired = false;
@@ -647,8 +573,9 @@ namespace keyboard
 				logger::info("keyboard: slot key {} in the {} - assigned to slot {} directly", i + 1, menus::Name(menu), i + 1);
 				wheels::AssignHighlighted(menu, i);
 			} else if (menu == menus::Menu::kNone && (!menus::AnyOpen() || quickkeys::RadialOpen())) {
-				g_script = { Script::kUse, i, 0, false, GetTickCount64() };
-				logger::info("keyboard: slot key {} - use slot {}", i + 1, i + 1);
+				if (Typing() || quickkeys::GameMessageUp()) continue;
+				wheels::QuickUse(i);
+				any = true;
 			}
 		}
 		{   // the left mouse button on a cell of the open assign panel assigns the highlighted row to that cell
@@ -697,11 +624,6 @@ namespace keyboard
 	bool MouseOwnsRadial()
 	{
 		return g_mouseRadial && quickkeys::RadialOpen() && !ScriptRunning();
-	}
-
-	bool UseScriptRecent()
-	{
-		return g_script.kind == Script::kUse || GetTickCount64() - g_useScriptEnded < 200;
 	}
 
 	bool ScriptRunning()

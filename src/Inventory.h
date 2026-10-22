@@ -59,4 +59,5 @@ namespace inventory
 
 	// takes the item off (the worn instance, the quick-keyed one first), on the TES thread: RB / A / closing on the slot of an item already worn
 	void UnequipKeyed(std::uint32_t a_formID);
+	void ToggleKeyed(std::uint32_t a_formID);   // worn-state decision made at TES dispatch for repeated quick uses
 }

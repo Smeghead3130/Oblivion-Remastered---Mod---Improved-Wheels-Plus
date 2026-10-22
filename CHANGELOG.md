@@ -3,6 +3,24 @@
 Written as changes happen, not reconstructed afterwards (rule 61). Started 2026-09-29; the history before this file is
 in `git log`. A version number is issued by the version gate only once a build is seen working in game (rule 48).
 
+## 2.1.0 - 2026-10-22 - Improved Wheels Plus
+
+### Added
+- Hold F6, F7 or F8 to open the Inventory, Magic or Ammo wheel directly (Ammo needs a bow). Rebind with sEquipmentWheel/sMagicWheel/sAmmoWheel.
+- In Inventory and Magic assignment panels, right-click/C/RT advance the pointed slot entry; Z/LT go backward. Triggers no longer change menu tabs while the panel is open.
+
+### Changed
+- Gameplay 1-8 and Numpad 1-8 directly activate the selected entry on the active wheel without opening the radial or simulating controller input. Equipment toggles, consumables, spell selection and ammo use keep their normal actions.
+- Removed mod-provided Esc cancellation and the sB keyboard option. R remains the gameplay wheel toggle; game-native Esc behavior is unchanged.
+- Assignment parsing rejects malformed or overflowing IDs without partially loading the file. Assignment and spell-name writes use a flushed temporary file before replacement.
+- Queued TES actions check a character-context epoch before execution; pending ordinary wheel state resets on observed context changes. This is not a guarantee of every same-character load transition.
+
+### Fixed
+- Repeated/alternating direct number-key use preserves Caps Lock walking instead of falling back to controller-style input.
+
+### Minor issue
+- Direct wheel shortcuts F6/F7/F8 can still reset walking to running. Opening with R and direct 1-8 quick use preserve walking.
+
 ## 2.0.0 - 2026-10-22 - Improved Wheels Plus
 
 ### Changed

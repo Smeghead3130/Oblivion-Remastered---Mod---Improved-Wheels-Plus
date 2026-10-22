@@ -469,51 +469,31 @@ namespace inventory
 		return a_state.carried ? std::format("x{}{}", a_state.count, a_state.worn ? ", worn" : ", not worn") : std::string("not carried");
 	}
 
-	void EquipKeyed(std::uint32_t a_formID)
+	namespace
 	{
-		testhread::Post([a_formID] {
-			auto* player = RE::PlayerCharacter::GetSingleton();
-			auto* item = Find(a_formID);
-			if (!player || !item || !item->object || item->count <= 0) {
-				logger::info("wheels: equip - {} is not carried any more", NameOf(a_formID));
-				return;
-			}
-			// the instance carrying the quick key (an enchanted or damaged one is its own list), else the base item
-			RE::ExtraDataList* keyed = nullptr;
-			if (item->extraData) {
-				for (RE::ExtraDataList* xl : *item->extraData) {
-					if (xl && KeyExtra(xl)) {
-						keyed = xl;
-						break;
+		enum class KeyedAction { kEquip, kUnequip, kToggle };
+
+		void QueueKeyed(std::uint32_t id, KeyedAction action)
+		{
+			testhread::Post([id, action] {
+				auto* player = RE::PlayerCharacter::GetSingleton();
+				auto* item = Find(id);
+				if (!player || !item || !item->object || item->count <= 0) return;
+				RE::ExtraDataList* keyed = nullptr;
+				if (item->extraData) {
+					for (RE::ExtraDataList* xl : *item->extraData) {
+						if (xl && KeyExtra(xl)) { keyed = xl; break; }
 					}
 				}
-			}
-			// no lock: EquipObject's last argument is the console's NoUnequip (gate rule or-equipobject-never-locks)
-			player->EquipObject(item->object, 1, keyed, false, false);
-			logger::info("wheels: equip - {} equipped on the TES thread ({})", NameOf(a_formID), Describe(StateOf(a_formID)));
-		});
+				const bool unequip = action == KeyedAction::kUnequip || (action == KeyedAction::kToggle && StateOf(id).worn);
+				if (unequip) player->UnequipObject(item->object, 1, keyed, false, false);
+				else player->EquipObject(item->object, 1, keyed, false, false);
+				logger::info("wheels: {} {} on the TES thread ({})", NameOf(id), unequip ? "unequipped" : "equipped", Describe(StateOf(id)));
+			});
+		}
 	}
 
-	void UnequipKeyed(std::uint32_t a_formID)
-	{
-		testhread::Post([a_formID] {
-			auto* player = RE::PlayerCharacter::GetSingleton();
-			auto* item = Find(a_formID);
-			if (!player || !item || !item->object || item->count <= 0) {
-				logger::info("wheels: unequip - {} is not carried any more", NameOf(a_formID));
-				return;
-			}
-			RE::ExtraDataList* keyed = nullptr;
-			if (item->extraData) {
-				for (RE::ExtraDataList* xl : *item->extraData) {
-					if (xl && KeyExtra(xl)) {
-						keyed = xl;
-						break;
-					}
-				}
-			}
-			player->UnequipObject(item->object, 1, keyed, false, false);
-			logger::info("wheels: unequip - {} taken off on the TES thread ({})", NameOf(a_formID), Describe(StateOf(a_formID)));
-		});
-	}
+	void EquipKeyed(std::uint32_t id) { QueueKeyed(id, KeyedAction::kEquip); }
+	void UnequipKeyed(std::uint32_t id) { QueueKeyed(id, KeyedAction::kUnequip); }
+	void ToggleKeyed(std::uint32_t id) { QueueKeyed(id, KeyedAction::kToggle); }
 }

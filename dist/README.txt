@@ -1,6 +1,6 @@
 Improved Wheel - Keyboard and Better Controller Support
 =======================================================
-Version 2.0.0
+Version 2.1.0
 
 A modified build of Improved Wheel Menu (Oblivion Remastered) by ApocryphaRealm (GPL-3.0). It replaces the original
 ImprovedWheelMenu.dll and keeps its file and setting names, so install it instead of the original, not beside it.
@@ -19,7 +19,7 @@ ADDED IN THIS BUILD
     Hold F6 / F7 / F8 to open Equipment / Magic / Ammo directly (Ammo requires a bow).
     Z / C step entries; right click advances an entry; backslash uses; F favourites;
     native menu R opens assignment; hold X clears a slot. The number keys 1-8 and Numpad 1-8
-    are slot keys (in gameplay they point at that slot and use it; in the Inventory / Magic menu they assign the highlighted item or spell to it).
+    are slot keys (in gameplay they directly use the selected entry without opening the wheel; in the Inventory / Magic menu they assign the highlighted item or spell to it).
   * Hold X (0.6 s) on a pointed slot of the assign panel to clear the whole slot; L3 opens the assign panel.
   * Select (uFavouriteButton) favourites the highlighted item or spell; LB (uWheelButton) opens the wheel; the game's Y sorting is kept.
   * Spells you made at the Altar of Spellmaking can go on the Magic wheel, also when two share a name.
@@ -116,3 +116,9 @@ LICENCE
   Built on CommonLibOB64 (GPL-3.0); spdlog and the other linked components are listed with their notices in THIRD_PARTY_NOTICES.md.
   Source of this build: https://github.com/cfa911/Improved-Wheel-Keyboard-and-Better-Controller-Support
   Original: https://github.com/ApocryphaRealm/ImprovedWheelMenuOR
+
+MINOR ISSUE
+-----------
+F6/F7/F8 direct-wheel opening can reset Caps Lock walking to running. R and 1-8 quick use preserve walking.
+
+In Equipment and Magic assignment panels, right-click/C/RT advance the pointed slot entry; Z/LT go backward. Triggers do not change tabs while the panel is open. Esc is no longer a mod-provided wheel or assignment-panel cancel binding.

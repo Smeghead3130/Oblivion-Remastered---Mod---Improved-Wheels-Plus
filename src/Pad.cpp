@@ -742,10 +742,10 @@ namespace pad
 					if (g_suppressDown) {
 						g_suppressDown = false;
 						logger::debug("pad: wheel button up after {} ms - already handled", sinceDown());
-					} else if (now - g_gameDownAt < kHoldThreshold && radialOpen && !keyboard::UseScriptRecent()) {
+					} else if (now - g_gameDownAt < kHoldThreshold && radialOpen) {
 						g_latched = true;        // a tap: the wheel stays open until the next press
 						logger::info("pad: wheel button tapped ({} ms) - the wheel stays open until the next press", sinceDown());
-					} else if (now - g_gameDownAt < kHoldThreshold && !g_downInMenu && !keyboard::UseScriptRecent()) {
+					} else if (now - g_gameDownAt < kHoldThreshold && !g_downInMenu) {
 						g_pendingLatch = true;   // a tap let go before the wheel showed: keep it held for the game until it does
 						g_pendingSince = now;
 						logger::info("pad: wheel button tapped ({} ms) before the wheel showed - held for the game until it opens", sinceDown());

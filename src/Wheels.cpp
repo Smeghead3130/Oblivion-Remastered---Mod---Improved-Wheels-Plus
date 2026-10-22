@@ -1654,6 +1654,29 @@ logger::info("wheels: the {} wheel's own button - it is the active wheel", Name(
 		}
 	}
 
+	void QuickUse(int a_slot)
+	{
+		if (a_slot < 0 || a_slot >= inventory::kSlots || quickkeys::GameMessageUp() || !EnsureLoaded()) return;
+		if (Active() == Wheel::kMagic) { UseMagic(a_slot); return; }
+		if (Active() == Wheel::kAmmo) {
+			if (settings::Get().ammoWheel && ammo::BowHeld()) UseAmmo(a_slot);
+			return;
+		}
+		const Slot& slot = g_wheels[kEquip][a_slot];
+		if (slot.active < 0 || slot.active >= static_cast<int>(slot.entries.size())) return;
+		const auto id = slot.entries[slot.active];
+		if (!inventory::Has(id)) return;
+		if (MiscTool(id)) {
+			HammerInvStart(id);   // retain the existing Inventory-before-hammer flow
+		} else if (Equippable(id)) {
+			inventory::ToggleKeyed(id);   // resolve worn state on the TES thread, not at enqueue time
+		} else {
+			inventory::EquipKeyed(id);   // consumables/poisons use the existing game action directly
+		}
+		g_lastUse = std::format("slot {}: direct quick use of {}", a_slot + 1, inventory::NameOf(id));
+		logger::info("wheels: direct quick use slot {} without opening the radial", a_slot + 1);
+	}
+
 	void UseNow(int a_slot, const char* a_how, bool a_stayOpen)
 	{
 		if (a_slot < 0) {
