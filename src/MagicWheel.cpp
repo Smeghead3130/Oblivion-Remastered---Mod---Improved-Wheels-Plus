@@ -333,6 +333,10 @@ namespace magicwheel
 
 	void Tick()
 	{
+		// a message of the game over the wheel ("Do you want to poison your next shot"): our counters and centre name, drawn above it, would
+		// ghost through its paper, so they wait until it is answered (the owner's screenshot, 2026-10-22)
+		const bool messageUp = quickkeys::GameMessageUp();
+		if (messageUp) slotcounts::Hide();
 		const auto menu = menus::Active();
 		const bool radial = quickkeys::RadialOpen();
 		const bool magic = (radial && wheels::Active() == wheels::Wheel::kMagic) || (menu == menus::Menu::kMagic && pad::MagicPanelUp());
@@ -345,7 +349,7 @@ namespace magicwheel
 			const int mode = ammoView ? 2 : equipPanel ? 1 : 0;
 			Show(wheel, mode);
 			if (auto* img = GameImage(wheel)) {
-				slotcounts::Show(img, mode == 2 ? wheels::Wheel::kAmmo : mode == 1 ? wheels::Wheel::kEquipment : wheels::Wheel::kMagic);   // "2/3" on each slot
+				if (!messageUp) slotcounts::Show(img, mode == 2 ? wheels::Wheel::kAmmo : mode == 1 ? wheels::Wheel::kEquipment : wheels::Wheel::kMagic);   // "2/3" on each slot
 				if (mode == 2) ringoverlay::Hide(); else ringoverlay::Show(img, mode == 1 ? ringoverlay::Kind::kEquipment : ringoverlay::Kind::kMagic);   // Magic blue, Inventory red
 			} else {
 				slotcounts::Hide();
@@ -357,7 +361,7 @@ namespace magicwheel
 		if (equip && wheel) {
 			HideSpellKeys(wheel);
 			if (auto* img = GameImage(wheel)) {
-				slotcounts::Show(img);   // "3/5" on each slot
+				if (!messageUp) slotcounts::Show(img);   // "3/5" on each slot
 				ringoverlay::Show(img, ringoverlay::Kind::kEquipment);   // the Equipment wheel is red
 			} else {
 				slotcounts::Hide();

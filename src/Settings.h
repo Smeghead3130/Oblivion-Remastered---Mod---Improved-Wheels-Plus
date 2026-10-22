@@ -25,6 +25,11 @@ namespace settings
 		int  ammoButton = 0x0008;     // [AmmoWheel] uButton: XInput button mask (8 = D-pad right), with a bow held
 		bool ammoCentred = true;      // [AmmoWheel] uPosition: 0 = a half wheel on the middle of the right-hand edge (the original), 1 = the whole ring in the middle of the screen, like the other wheels
 		int  ammoScalePercent = 100;  // [AmmoWheel] uScalePercent
+		struct Theme   // [Theme]: the redesigned look of a wheel (2.2.0): its picture, pointer arrow and name colours; one switch a wheel
+		{
+			bool magic = true;       // bMagicWheel: the blue Magic wheel (0: the game's own gold wheel, pointer and title)
+			bool inventory = true;   // bInventoryWheel: the red Equipment wheel, also the Inventory assign panel (0: the game's own look)
+		} theme;
 		struct Display   // [Display]: where things sit on the wheel and how big they are (percent; 0 = automatic where noted)
 		{
 			int uiScalePercent = 0;     // 0 = the game's own UI scale; else the scale mouse clicks are converted with (133 = 1.33)
