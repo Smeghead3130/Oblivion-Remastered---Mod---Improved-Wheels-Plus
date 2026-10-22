@@ -1,6 +1,6 @@
 # Improved Wheel - Keyboard and Better Controller Support (Oblivion Remastered)
 
-A fork of [Improved Wheel Menu](https://github.com/ApocryphaRealm/ImprovedWheelMenuOR) by ApocryphaRealm, version **2.1.0** of this fork.
+A fork of [Improved Wheel Menu](https://github.com/ApocryphaRealm/ImprovedWheelMenuOR) by ApocryphaRealm, version **2.2.0** of this fork.
 
 **Not compatible with other wheel mods.** It replaces Improved Wheel Menu (same file and setting names) and takes over the game's quick-key radial and hotkeys; use it instead of any other wheel mod, never beside one.
 
@@ -8,7 +8,11 @@ A fork of [Improved Wheel Menu](https://github.com/ApocryphaRealm/ImprovedWheelM
 
 **The main addition is keyboard support:** the whole wheel menu (the inventory, Magic and ammo wheels, favouriting, the assign panel) works from the keyboard, with or without a controller. Every key is configurable in the `[Keyboard]` section of `ImprovedWheelMenu.ini`, and so is every other setting. On top of that it adds the Select/L3/LB controller rules, clearing a slot, spells you made, slot counters and names on the Magic wheel, and per-character wheels. See [`CHANGELOG.md`](CHANGELOG.md). The DLL keeps the original's name, so install it instead of the original. Original authorship and commit history are kept; this fork is GPL-3.0-or-later like the original.
 
-## Keyboard defaults in 2.1.0
+## Wheel appearance in 2.2.0
+
+Magic has a blue wheel, gold pointer and blue title with a gold outline. Inventory has a red wheel, silver pointer and red title with a silver outline. Both assignment panels use the same themes. Ammo retains its existing appearance. In `[Theme]`, `bMagicWheel=1` and `bInventoryWheel=1` enable each theme independently; set either to `0` for the native look.
+
+## Keyboard defaults in 2.2.0
 
 - **R:** open the gameplay wheel; press again to cancel. In Inventory/Magic, R opens the native assign panel.
 - **F6 / F7 / F8:** hold to open Equipment / Magic / Ammo directly (Ammo requires a bow).

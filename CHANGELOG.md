@@ -3,6 +3,21 @@
 Written as changes happen, not reconstructed afterwards (rule 61). Started 2026-09-29; the history before this file is
 in `git log`. A version number is issued by the version gate only once a build is seen working in game (rule 48).
 
+## 2.2.0 - 2026-10-22 - Improved Wheels Plus
+
+### Added
+- Blue Magic wheel with a gold pointer and a blue title outlined in gold.
+- Red Inventory/Equipment wheel with a silver pointer and a red title outlined in silver.
+- Matching themes in the Magic and Inventory assignment panels. Ammo keeps its existing appearance.
+- Independent [Theme] bMagicWheel and bInventoryWheel switches, both on by default; set either to 0 to restore that wheel's native look. Missing wheel pictures retain the native wheel.
+
+### Fixed
+- Wheel overlays, slot counters and the center name step aside while a game message is up.
+- Equipment title color uses a text comparison instead of comparing string pointers.
+
+### Minor issue
+- F6/F7/F8 can still reset walking to running. R and direct 1-8 quick use preserve walking.
+
 ## 2.1.0 - 2026-10-22 - Improved Wheels Plus
 
 ### Added
