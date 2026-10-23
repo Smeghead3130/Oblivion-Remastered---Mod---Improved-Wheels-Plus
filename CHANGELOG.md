@@ -15,12 +15,12 @@ in `git log`. A version number is issued by the version gate only once a build i
 - The Magic wheel hides spells the character does not know, for example after loading an earlier save. They stay stored and come back in a save that has them.
 - Loading an earlier save no longer erases wheel assignments that character does not have yet.
 - A wheel with no stored file now starts empty and checked: the game's own hotkeys are cleared and verified empty before you can assign anything.
-- [Wheel] uRestSnapMs default 150 -> 250.
+- [Wheel] uRestSnapMs default 150 -> 250 (an existing INI keeps its own value).
 
 ### Fixed
 - Controller: choosing by pointing with the right stick and letting go of LB now selects reliably, also when you switch between wheels.
 - Closing a wheel quickly and opening it again at once no longer leaves the right stick dead.
-- Safer reading of the inventory, arrow and spell lists, and bounds checks on wheel slots, so a list that changes at the wrong moment no longer risks a crash.
+- Safer reading of the inventory, arrow and spell lists, and bounds checks on wheel slots, so a list that changes at the wrong moment is less likely to cause a crash.
 
 ### Minor issue
 - F6/F7/F8 can still reset walking to running. R and direct 1-8 quick use preserve walking.
