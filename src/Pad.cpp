@@ -13,6 +13,7 @@
 #include "MessageDiscovery.h"
 #include "Rows.h"
 #include "Settings.h"
+#include "SlowTime.h"
 #include "Wheels.h"
 
 #include <Xinput.h>   // types and constants only - nothing is linked or loaded
@@ -196,6 +197,7 @@ bool g_magicPanel = false;   // the magic menu's panel is up (it reports no visi
 		// the HUD radial is closing on a slot of the Magic wheel: the game must use nothing, the spell is ours to set
 		void CloseOnAmmo(int a_slot)
 		{
+			slowtime::CloseRequested();
 			quickkeys::ClearPointer();   // the game's own pointed key too: its close must use nothing
 			wheels::HoldKey(a_slot);     // and nothing on its key of that slot to use if it points there again
 			wheels::UseAmmo(a_slot);
@@ -206,6 +208,7 @@ bool g_magicPanel = false;   // the magic menu's panel is up (it reports no visi
 
 		void CloseOnMagic(int a_slot)
 		{
+			slowtime::CloseRequested();
 			quickkeys::ClearPointer();   // the game's own pointed key too: a potion on the same slot of its own wheel was used by its close
 			wheels::HoldKey(a_slot);
 			wheels::UseMagic(a_slot);
@@ -223,6 +226,7 @@ bool g_magicPanel = false;   // the magic menu's panel is up (it reports no visi
 		// the pointed slot; the choice is kept cleared, with the stick held centred, until the radial has closed.
 		void CloseOnNothing(const char* a_how)
 		{
+			slowtime::CloseRequested();
 			const int pointed = PointedKey();
 			quickkeys::ClearPointer();
 			// the game re-points within a frame and its close uses the quick key there: with the stick on a slot of the Magic wheel and the
@@ -240,6 +244,7 @@ bool g_magicPanel = false;   // the magic menu's panel is up (it reports no visi
 		// A key holding a spell is drawn empty (MagicWheel.cpp) and uses nothing - spells are the Magic wheel's.
 		void CloseOnEquipment(int a_slot, const char* a_how)
 		{
+			slowtime::CloseRequested();
 			quickkeys::ClearPointer();   // every wheel is its own: the game's close uses nothing on any of them
 			g_closingMagic = true;   // held clear and centred until the radial has closed
 			if (a_slot < 0 || !inventory::Keys()[static_cast<std::size_t>(a_slot)] || magicwheel::IsSpellKey(a_slot)) {
@@ -308,6 +313,7 @@ bool g_magicPanel = false;   // the magic menu's panel is up (it reports no visi
 		// (IWP-024: the stick could point nothing, and the Equipment cell drew black). Every piece of close-side state is let go at once.
 		void AbandonClose(const char* a_why)
 		{
+			slowtime::Reopened();
 			g_closingMagic = false;
 			g_closeEpoch.Reset();
 			g_forceClose = false;
@@ -729,6 +735,7 @@ const int slot = settings::Get().chooseOnClose ? PointedKey() : -1;
 					RestSnap(a_pad, now);   // only notes that it closed
 				}
 				if (quickkeys::RadialOpen() && (pressed & XINPUT_GAMEPAD_B)) {
+					slowtime::CloseRequested();
 					// B backs out: nothing is used, the wheel closes
 					const int bPointed = PointedKey();
 					quickkeys::ClearPointer();
