@@ -7,6 +7,7 @@
 #include "Reflect.h"
 #include "Rows.h"
 #include "Settings.h"
+#include "SlowTime.h"
 #include "TesThread.h"
 #include "Ui.h"
 #include "Wheels.h"
@@ -581,6 +582,7 @@ namespace ammo
 
 		void Close(const char* a_why)
 		{
+			slowtime::CloseRequested();
 			g_open = false;
 			g_pointed = -1;
 			LockLook(false);

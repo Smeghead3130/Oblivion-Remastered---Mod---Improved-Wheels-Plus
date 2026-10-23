@@ -129,6 +129,8 @@ Close the game, edit `OblivionRemastered\Binaries\Win64\OBSE\Plugins\ImprovedWhe
 | `bBlockFavouriteDropSell` | Block dropping and selling favorites; disabled by default. |
 | `bShowSlotCapacity` | Show counters against capacity, such as 2/5, instead of current entry count, such as 2/3. |
 | `uAnimSpeedPercent` | Adjust the radial animation speed. |
+| `bSlowTime` | Optional world slowdown while a gameplay wheel is open. Default `0` (off); use `1` to enable. |
+| `uSlowTimePercent` | World speed with slowdown enabled: `1`–`99`, default `10` (one tenth speed). Normal speed returns when closing starts. |
 
 Keyboard controls are configurable under `[Keyboard]`, including `sEquipmentWheel`, `sMagicWheel` and `sAmmoWheel` for direct shortcuts. `NONE` disables a direct shortcut. Controller wheel and favorite bindings are configurable too; see the INI comments.
 

@@ -9,6 +9,7 @@
 #include "QuickKeys.h"
 #include "Rows.h"
 #include "Settings.h"
+#include "SlowTime.h"
 #include "TesThread.h"
 #include "Wheels.h"
 
@@ -60,6 +61,7 @@ namespace
 		// menu the first time it opens). They are looked for on the GAME thread, from the controller read, about
 		// every 200 ms - never from a thread of our own (a start-up crashed in UObjectArray, 2026-09-29).
 		pad::SetFrameCallback([] {
+			slowtime::Tick();
 			favourites::Tick();   // the inventory's favourites column (every 100 ms while the inventory is open)
 			static auto next = std::chrono::steady_clock::now();
 			static bool tesThreadTried = false;

@@ -9,6 +9,7 @@
 #include "Wheels.h"
 #include "Ui.h"
 #include "Settings.h"
+#include "SlowTime.h"
 
 #include <atomic>
 
@@ -490,6 +491,7 @@ namespace keyboard
 			}
 			if (g_nativeWheelHeld && radial) g_nativeWheelSeen = true;
 			if (g_nativeWheelCancel.exchange(false)) {
+				slowtime::CloseRequested();
 				if (radial) { a_pad.wButtons |= XINPUT_GAMEPAD_B; any = true; }
 				ReleaseNativeWheel();
 			} else if (g_nativeWheelHeld && ((!radial && g_nativeWheelSeen) || (!radial && !gameplay) ||
@@ -500,6 +502,7 @@ namespace keyboard
 			g_nativeWheelAllowed = false;
 			if (wheelDown && !previousWheel && (gameplay || radial) && !ammo::Open()) {
 				if (radial) {
+					slowtime::CloseRequested();
 					a_pad.wButtons |= XINPUT_GAMEPAD_B;
 				} else {
 					g_mouseRadial = true;
