@@ -6,6 +6,7 @@
 #include "Pad.h"
 #include "PEHook.h"
 #include "QuickKeys.h"
+#include "MessageDiscovery.h"
 #include "Reflect.h"
 #include "Wheels.h"
 #include "Ui.h"
@@ -516,7 +517,8 @@ namespace keyboard
 			press(k.lb, static_cast<WORD>(settings::Get().wheelButton));
 		}
 		previousWheel = wheelDown;
-		if (radial && !quickkeys::GameMessageUp()) {
+		const bool radialInputDown = radial && (Down(k.rb) || Down(k.a) || Down(k.dpadLeft) || Down(k.dpadRight) || Down(k.lt) || Down(k.rt) || mouseDown);
+		if (radialInputDown && messagediscovery::InputAllowed(true, [] { return quickkeys::GameMessageUp(); })) {   // asked only when one of these keys is down: nothing else in the block acts
 			press(k.rb, XINPUT_GAMEPAD_RIGHT_SHOULDER);
 			press(k.a, XINPUT_GAMEPAD_A);
 			press(k.dpadLeft, XINPUT_GAMEPAD_DPAD_LEFT);
@@ -540,7 +542,7 @@ namespace keyboard
 				press(k.a, XINPUT_GAMEPAD_A);
 				press(k.dpadLeft, XINPUT_GAMEPAD_DPAD_LEFT);
 				press(k.dpadRight, XINPUT_GAMEPAD_DPAD_RIGHT);
-				if (!quickkeys::GameMessageUp()) {
+				if (messagediscovery::InputAllowed(Down(k.lt) || Down(k.rt) || mouseDown, [] { return quickkeys::GameMessageUp(); })) {
 					if (Down(k.lt)) { a_pad.bLeftTrigger = 255; any = true; }
 					if (Down(k.rt) || mouseDown) { a_pad.bRightTrigger = 255; any = true; }
 				}

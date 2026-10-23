@@ -17,4 +17,12 @@ namespace messagediscovery
 	private:
 		std::uint64_t next_ = 0;
 	};
+
+	// A dialog only matters to input that is actually being pressed: with nothing pressed the guarded block does nothing, so
+	// the message is not asked about (that ask is an object-array scan whenever no known dialog is up).
+	template <class MessageUp>
+	bool InputAllowed(bool a_anyGuardedInputDown, MessageUp&& a_messageUp)
+	{
+		return a_anyGuardedInputDown && !a_messageUp();
+	}
 }

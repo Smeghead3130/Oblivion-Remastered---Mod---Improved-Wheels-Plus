@@ -28,6 +28,11 @@ int ReviewFixTests()
 		check(!discovery.Due(1001, false), "repeated drawing avoids object-array discovery");
 		check(discovery.Due(1001, true), "input immediately discovers a newly created dialog");
 		check(!discovery.Due(1100, false) && discovery.Due(1101, false), "drawing refreshes after100ms since last actual discovery");
+		int asks = 0;
+		const auto messageUp = [&](bool a_up) { return [&asks, a_up] { ++asks; return a_up; }; };
+		check(!messagediscovery::InputAllowed(false, messageUp(false)) && asks == 0, "no guarded key down: the dialog is not asked about");
+		check(messagediscovery::InputAllowed(true, messageUp(false)) && asks == 1, "a key down and no dialog: input allowed after exactly one ask");
+		check(!messagediscovery::InputAllowed(true, messageUp(true)) && asks == 2, "a key down and a dialog up: input is held back");
 	}
 	{
 		std::unordered_set<std::uint32_t> seen{ 42 };

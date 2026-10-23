@@ -10,6 +10,7 @@
 #include "MagicWheel.h"
 #include "Menus.h"
 #include "QuickKeys.h"
+#include "MessageDiscovery.h"
 #include "Rows.h"
 #include "Settings.h"
 #include "Wheels.h"
@@ -608,7 +609,7 @@ const int slot = settings::Get().chooseOnClose ? PointedKey() : -1;
 					out &= ~(XINPUT_GAMEPAD_DPAD_LEFT | XINPUT_GAMEPAD_DPAD_RIGHT);
 					const auto wheel = wheels::AssignmentWheel(menu);
 					// Assign-panel triggers belong to entry cycling, never to the menu's tab navigation.
-					if (!quickkeys::GameMessageUp()) {
+					if (messagediscovery::InputAllowed((pressed & (XINPUT_GAMEPAD_DPAD_LEFT | XINPUT_GAMEPAD_DPAD_RIGHT)) || ltPressed || rtPressed, [] { return quickkeys::GameMessageUp(); })) {
 						if ((pressed & XINPUT_GAMEPAD_DPAD_LEFT) || ltPressed) { wheels::CycleEntry(wheel, PointedKey(), -1); }
 						if ((pressed & XINPUT_GAMEPAD_DPAD_RIGHT) || rtPressed) { wheels::CycleEntry(wheel, PointedKey(), +1); }
 					}
