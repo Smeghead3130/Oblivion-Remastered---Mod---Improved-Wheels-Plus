@@ -1,6 +1,6 @@
 # Improved Wheels Plus — User Documentation
 
-For version **2.3.0**. [Nexus page](https://www.nexusmods.com/oblivionremastered/mods/5713) · [Change history](CHANGELOG.md)
+For version **2.4.0**. [Nexus page](https://www.nexusmods.com/oblivionremastered/mods/5713) · [Change history](CHANGELOG.md)
 
 Keep weapons, armor, supplies, spells and arrows within reach using three separate wheels, with full keyboard, mouse and controller support.
 
@@ -13,6 +13,7 @@ Keep weapons, armor, supplies, spells and arrows within reach using three separa
 - [Controller controls](#controller-controls)
 - [Adding and organizing entries](#adding-and-organizing-entries)
 - [Choosing and canceling](#choosing-and-canceling)
+- [Slow motion while a wheel is open](#slow-motion-while-a-wheel-is-open)
 - [Settings and appearance](#settings-and-appearance)
 - [Assignments and backups](#assignments-and-backups)
 - [Compatibility](#compatibility)
@@ -40,7 +41,7 @@ For Mod Organizer 2, install at the game root through Root Builder or an equival
 
 **The first time each character uses the mod, the game's original item and spell hotkeys are cleared and the mod's wheels start empty.** No manual cleanup is required. Rebuild your loadout using favorites, the assign panel or number keys.
 
-Existing Improved Wheels Plus **2.x** assignments are retained when updating to 2.3.0. Legacy wheel files and other wheel mods' assignments are not imported. Existing INI files keep their configured bindings, so your keys may differ from the defaults below.
+Existing Improved Wheels Plus **2.x** assignments are retained when updating to 2.4.0. Legacy wheel files and other wheel mods' assignments are not imported. Existing INI files keep their configured bindings, so your keys may differ from the defaults below.
 
 ## The three wheels
 
@@ -113,6 +114,15 @@ Keyboard **R** toggles the gameplay wheel; pressing it again closes without choo
 
 Choose a spell to select it, then cast normally. Selecting a spell or arrows does not use an Inventory item in the matching slot. Game message dialogs take priority over the wheel.
 
+## Slow motion while a wheel is open
+
+While a gameplay wheel is open (Inventory, Magic or Ammo), the game world slows to one tenth speed. It returns to
+normal the moment the wheel closes. Sound is not slowed.
+
+Slow motion is **on by default**. To turn it off, set `bSlowTime=0` in the `[Wheel]` section of the INI.
+`uSlowTimePercent` (1 to 99, default `10`) sets the speed while it is on. Slow motion may not be compatible with
+other slow-down mods.
+
 ## Settings and appearance
 
 Close the game, edit `OblivionRemastered\Binaries\Win64\OBSE\Plugins\ImprovedWheelMenu.ini`, then restart. Use the existing sections and comments in the [shipped INI](dist/OblivionRemastered/Binaries/Win64/OBSE/Plugins/ImprovedWheelMenu.ini) as the reference for placement and accepted values. `1` enables a Boolean option; `0` disables it.
@@ -129,7 +139,7 @@ Close the game, edit `OblivionRemastered\Binaries\Win64\OBSE\Plugins\ImprovedWhe
 | `bBlockFavouriteDropSell` | Block dropping and selling favorites; disabled by default. |
 | `bShowSlotCapacity` | Show counters against capacity, such as 2/5, instead of current entry count, such as 2/3. |
 | `uAnimSpeedPercent` | Adjust the radial animation speed. |
-| `bSlowTime` | Optional world slowdown while a gameplay wheel is open. Default `0` (off); use `1` to enable. |
+| `bSlowTime` | World slowdown while a gameplay wheel is open. Default `1` (on); set `0` to turn it off. |
 | `uSlowTimePercent` | World speed with slowdown enabled: `1`–`99`, default `10` (one tenth speed). Normal speed returns when closing starts. |
 
 Keyboard controls are configurable under `[Keyboard]`, including `sEquipmentWheel`, `sMagicWheel` and `sAmmoWheel` for direct shortcuts. `NONE` disables a direct shortcut. Controller wheel and favorite bindings are configurable too; see the INI comments.
