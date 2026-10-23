@@ -1,4 +1,3 @@
-#include "PerfDiag.h" // TEMP-DIAG
 #include "Pad.h"
 #include "RadialSelection.h"
 #include "CloseEpoch.h"
@@ -439,7 +438,6 @@ const int slot = settings::Get().chooseOnClose ? PointedKey() : -1;
 
 		void Rewrite(XINPUT_GAMEPAD& a_pad)
 		{
-			perfdiag::Scope timing(perfdiag::Metric::Rewrite); // TEMP-DIAG
 			g_liveStickKey = -1;
 			{   // a wheel's own button (INI [Wheel] uEquipmentWheelButton / uMagicWheelButton / uAmmoWheelButton): that wheel is made the
 				// active one, and the wheel button is held for as long as it is - so one press opens the radial on that wheel
@@ -905,27 +903,15 @@ if (g_centreStick > 0) {
 
 		DWORD WINAPI Chained(DWORD a_user, XINPUT_STATE* a_state)
 		{
-#ifdef IWP_TEMP_TIMINGS
-			if (GetCurrentThreadId() == g_gameThread && a_user == 0) perfdiag::Pulse(); // TEMP-DIAG, before total timer
-#endif
-			perfdiag::Scope timing(perfdiag::Metric::Chained);
-			if (a_user < 4) perfdiag::Add(static_cast<perfdiag::Counter>(static_cast<int>(perfdiag::Counter::Pad0) + a_user));
 			if (GetCurrentThreadId() != g_gameThread) {
-				perfdiag::Scope previousTiming(a_user < 4 ? static_cast<perfdiag::Metric>(static_cast<int>(perfdiag::Metric::Previous0) + a_user) : perfdiag::Metric::Count); // TEMP-DIAG
 				return g_previous ? g_previous(a_user, a_state) : ERROR_DEVICE_NOT_CONNECTED;
 			}
 			if (a_user == 0) {
 				if (auto cb = g_frameCallback.load(std::memory_order_acquire)) {
-					perfdiag::Scope callbackTiming(perfdiag::Metric::FrameCallback); // TEMP-DIAG
-					perfdiag::Add(perfdiag::Counter::FrameCallbacks);
 					cb();
 				}
 			}
-			DWORD rc;
-			{
-				perfdiag::Scope previousTiming(a_user < 4 ? static_cast<perfdiag::Metric>(static_cast<int>(perfdiag::Metric::Previous0) + a_user) : perfdiag::Metric::Count); // TEMP-DIAG
-				rc = g_previous ? g_previous(a_user, a_state) : ERROR_DEVICE_NOT_CONNECTED;
-			}
+			DWORD rc = g_previous ? g_previous(a_user, a_state) : ERROR_DEVICE_NOT_CONNECTED;
 			if (a_user != 0 && a_user < 4 && rc == ERROR_SUCCESS) {
 				// Only user 0 is rewritten. Under Proton the one pad can sit on two indices (Steam's virtual pad and the
 				// Deck's own HID device), and a second index would hand the game the buttons the wheel holds back.

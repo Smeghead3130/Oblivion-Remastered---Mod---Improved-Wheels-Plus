@@ -1,4 +1,3 @@
-#include "PerfDiag.h" // TEMP-DIAG
 #include "RingOverlay.h"
 
 #include "QuickKeys.h"
@@ -118,7 +117,6 @@ namespace ringoverlay
 
 	void Show(UE::UObject* a_gameWheelImage, Kind a_kind)
 	{
-		perfdiag::Scope timing(perfdiag::Metric::RingShow); // TEMP-DIAG
 		// a message of the game over the wheel ("Staffs cannot be poisoned") is on a layer under ours: while it is up the game's own wheel
 		// shows and the message stays whole (the owner's screenshot, 2026-10-22)
 		const auto& theme = settings::Get().theme;

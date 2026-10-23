@@ -1,4 +1,3 @@
-#include "PerfDiag.h" // TEMP-DIAG
 #include "QuickKeys.h"
 #include "MessageDiscovery.h"
 
@@ -278,7 +277,6 @@ namespace quickkeys
 
 	void BoostAnimations()
 	{
-		perfdiag::Scope timing(perfdiag::Metric::BoostAnimations); // TEMP-DIAG
 		const int pct = settings::Get().animSpeedPercent;
 		if (pct <= 100 || GetTickCount64() > g_boostUntil.load()) return;
 		auto* w = VisibleWheel();
@@ -508,18 +506,15 @@ namespace quickkeys
 
 	bool GameMessageUp(bool a_immediate)
 	{
-		perfdiag::Scope timing(perfdiag::Metric::GameMessageClassMissing); // TEMP-DIAG
 		static UE::UClass*     s_cls = nullptr;
 		static reflect::Handle s_last;   // the instance seen up last time: asked first
 		static std::vector<reflect::Handle> s_known;
 		static messagediscovery::Gate s_discovery;
 		if (!s_cls) {
 			s_cls = UE::StaticFindObject<UE::UClass>(nullptr, nullptr, L"/Game/UI/Modern/ModalLayer/Messages/WBP_ModernMenu_Message.WBP_ModernMenu_Message_C");
-			if (!s_cls) { perfdiag::Add(perfdiag::Counter::MessageMissing); return false; } // TEMP-DIAG
+			if (!s_cls) return false;   // no message shown yet this session
 			logger::info("quick keys: drawing message discovery is limited to100ms; input discovery stays immediate");
 		}
-		timing.Label(perfdiag::Metric::GameMessageClassFound); // TEMP-DIAG
-		perfdiag::Add(perfdiag::Counter::MessageFound);
 		const auto up = [](UE::UObject* a_w) {
 			if (!a_w) return false;
 			ui::Call act(a_w, L"IsActivated");   // a CommonUI activatable widget: deactivated when answered
@@ -535,7 +530,6 @@ namespace quickkeys
 			}
 		}
 		if (!s_discovery.Due(GetTickCount64(), a_immediate)) return false;
-		perfdiag::Add(perfdiag::Counter::MessageInstances); // TEMP-DIAG
 		s_known.clear();
 		for (auto* w : reflect::Instances(s_cls)) {
 			s_known.push_back(reflect::Hold(w));
@@ -557,7 +551,6 @@ namespace quickkeys
 
 	UE::UObject* VisibleWheel()
 	{
-		perfdiag::Scope timing(perfdiag::Metric::VisibleWheel); // TEMP-DIAG
 		// the wheel widgets, found by a whole-array scan at most every 2 s and kept by their slots
 		static std::vector<reflect::Handle> s_known;
 		static ULONGLONG                    s_nextScan = 0;

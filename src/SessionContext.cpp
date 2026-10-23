@@ -1,4 +1,3 @@
-#include "PerfDiag.h" // TEMP-DIAG
 #include "SessionContext.h"
 #include "Inventory.h"
 
@@ -6,7 +5,6 @@ namespace sessioncontext
 {
 	sessionepoch::Token Current()
 	{
-		perfdiag::Scope timing(perfdiag::Metric::SessionCurrent); // TEMP-DIAG
 		static std::mutex lock;
 		static sessionepoch::Epoch epoch;
 		std::scoped_lock guard(lock);

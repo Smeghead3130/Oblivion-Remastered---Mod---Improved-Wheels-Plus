@@ -1,4 +1,3 @@
-#include "PerfDiag.h" // TEMP-DIAG
 #include "Rows.h"
 #include "TextUtil.h"
 
@@ -196,8 +195,6 @@ namespace rows
 			if (!g_dirty) {
 				return;
 			}
-			perfdiag::Scope timing(perfdiag::Metric::Harvest); // TEMP-DIAG: full harvest only
-			perfdiag::Add(perfdiag::Counter::HarvestFull);
 			g_dirty = false;
 			for (auto it = g_inventory.seen.begin(); it != g_inventory.seen.end();) {
 				auto* row = reflect::Get(it->first, it->second);
@@ -229,7 +226,6 @@ namespace rows
 
 		void OnRow(Kind& a_kind, UE::UObject* a_obj, UE::UFunction* a_fn, void* a_params)
 		{
-			perfdiag::RowEvent(a_obj->GetClass(), a_fn); // TEMP-DIAG: bounded function-name cache
 			a_kind.seen.insert_or_assign(a_obj, a_obj->internalIndex);   // live: the engine is calling it now
 			g_dirty = true;
 			if (!a_kind.fnSelection && pe::FunctionName(a_fn) == "BP_OnItemSelectionChanged") {
@@ -445,14 +441,12 @@ namespace rows
 
 		UE::UObject* FindSaveData()
 		{
-			perfdiag::Scope timing(perfdiag::Metric::FindSaveData); // TEMP-DIAG
 			if (g_saveData && reflect::Get(g_saveData, g_saveDataSlot)) return g_saveData;
 			g_saveData = nullptr;
 			auto* arr = UE::FUObjectArray::GetSingleton();
 			if (!arr) return nullptr;
 			arr->LockInternalArray();
 			const std::int32_t n = arr->GetObjectArrayNum();
-			perfdiag::Add(perfdiag::Counter::ObjectSlots, n); // TEMP-DIAG
 			for (std::int32_t i = 0; i < n && !g_saveData; ++i) {
 				auto* item = arr->IndexToObject(i);
 				if (!item || !item->object) continue;
@@ -707,7 +701,6 @@ namespace rows
 
 	std::uint32_t HighlightedItem()
 	{
-		perfdiag::Scope timing(perfdiag::Metric::HighlightedItem); // TEMP-DIAG
 		Harvest();
 		auto*      row = reflect::Get(g_inventory.highlighted);   // gone after a drop or a close: no item
 		const auto id = FormOfInventoryRow(row);

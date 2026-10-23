@@ -1,4 +1,3 @@
-#include "PerfDiag.h" // TEMP-DIAG
 #include "Controls.h"
 
 #include "Menus.h"
@@ -122,7 +121,6 @@ namespace controls
 		// (Keyboard.cpp) replace them, so a digit no longer opens the radial or assigns to the game's own key storage
 		int UnbindNativeQuickKeys()
 		{
-			perfdiag::Scope timing(perfdiag::Metric::Unbind); // TEMP-DIAG
 			// the keyboard quick keys are not in IMC_Game_Default (nothing of that name was found there): every mapping context the
 			// game has loaded is looked through
 			const auto m = Mappings();
@@ -286,7 +284,6 @@ namespace controls
 		// the button our action has now: a rebind on the Controls page is kept; a context re-applied without it gets it back
 		void Follow()
 		{
-			perfdiag::Scope timing(perfdiag::Metric::Follow); // TEMP-DIAG
 			const auto keys = PadKeys();
 			const auto wanted = KeyFor(static_cast<WORD>(settings::Get().ammoButton));
 			if (keys.empty()) {
@@ -320,7 +317,6 @@ namespace controls
 
 	void Tick()
 	{
-		perfdiag::Scope timing(perfdiag::Metric::ControlsTick); // TEMP-DIAG
 		++g_ticks;
 		if (!settings::Get().ammoWheel) return;
 		if (!g_setUp) {
