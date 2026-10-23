@@ -240,7 +240,7 @@ namespace magicwheel
 				g_tex.fill(nullptr);
 				g_op.fill(-1.0f);
 			}
-			const std::array<std::uint32_t, 8> spells = a_mode == 1 ? inventory::Keys() :a_mode == 2 ? wheels::AmmoRingSlots() : wheels::MagicSlots();
+			const std::array<std::uint32_t, 8> spells = a_mode == 1 ? (wheels::Ready() ? inventory::Keys() : inventory::KeyMap{}) :a_mode == 2 ? wheels::AmmoRingSlots() : wheels::MagicSlots();
 			for (int k = 0; k < 8; ++k) {
 				const auto here = spells[static_cast<std::size_t>(k)];
 				auto* tex = here ? (a_mode != 0 ? rows::ItemIcon(here) : rows::SpellIcon(here)) : nullptr;
@@ -301,7 +301,7 @@ namespace magicwheel
 			auto* gameImg = GameImage(a_wheel);
 			auto* gameMid = gameImg ? ui::BrushResource(gameImg) : nullptr;
 			if (!IsMid(gameMid)) return;
-			const auto keys = inventory::Keys();
+			const auto keys = wheels::Ready() ? inventory::Keys() : inventory::KeyMap{};
 			const auto icons = quickkeys::ReadIcons();
 			int shown = 0, set = 0;
 			for (int k = 0; k < 8; ++k) {
@@ -343,7 +343,8 @@ namespace magicwheel
 		const bool equip = (radial && wheels::Active() == wheels::Wheel::kEquipment) || (menu == menus::Menu::kInventory && quickkeys::PanelOpen());
 		auto* wheel = magic || equip || (radial && wheels::Active() == wheels::Wheel::kAmmo) ? quickkeys::VisibleWheel() : nullptr;
 		const bool equipPanel = !magic && menu == menus::Menu::kInventory && quickkeys::PanelOpen();   // the Inventory's assign panel
-		const bool ammoView = radial && wheels::Active() == wheels::Wheel::kAmmo;                      // the radial's third view, with a bow held
+		const bool ammoView = (radial && wheels::Active() == wheels::Wheel::kAmmo) ||
+			(equipPanel && wheels::AssignmentWheel(menu) == wheels::Wheel::kAmmo);                      // the radial's third view
 		if (ammoView && !wheel) wheel = quickkeys::VisibleWheel();
 		if ((magic || equipPanel || ammoView) && wheel) {
 			const int mode = ammoView ? 2 : equipPanel ? 1 : 0;

@@ -20,9 +20,9 @@ namespace settings
 		bool showSlotCapacity = false;   // [Wheel] bShowSlotCapacity: the slot counters read "2/5" (the capacity) instead of "2/3" (the entries the slot holds)
 		bool chooseOnClose = true;    // [Wheel] bChooseOnClose: closing the wheel (its button let go or pressed again) uses the pointed slot, as RB / A would
 		bool centreRestSnap = true;   // [Wheel] bCentreRestSnap: the right stick back at rest points at no slot
-		int  restSnapMs = 150;        // [Wheel] uRestSnapMs: how long at rest before the pointer lets go
+		int  restSnapMs = 250;        // [Wheel] uRestSnapMs: how long at rest before the pointer lets go
 		bool ammoWheel = true;        // [AmmoWheel] bEnabled
-		int  ammoButton = 0x0008;     // [AmmoWheel] uButton: XInput button mask (8 = D-pad right), with a bow held
+		int  ammoButton = 0x0008;     // [AmmoWheel] uButton: XInput button mask (8 = D-pad right)
 		bool ammoCentred = true;      // [AmmoWheel] uPosition: 0 = a half wheel on the middle of the right-hand edge (the original), 1 = the whole ring in the middle of the screen, like the other wheels
 		int  ammoScalePercent = 100;  // [AmmoWheel] uScalePercent
 		struct Theme   // [Theme]: the redesigned look of a wheel (2.2.0): its picture, pointer arrow and name colours; one switch a wheel
@@ -42,7 +42,7 @@ namespace settings
 		} display;
 		int  equipmentWheelButton = 0;   // [Wheel] uEquipmentWheelButton: XInput mask that opens the radial straight on the Equipment wheel (0 = none)
 		int  magicWheelButton = 0;       // [Wheel] uMagicWheelButton: the same for the Magic wheel
-		int  ammoWheelButton = 0;        // [Wheel] uAmmoWheelButton: the same for the Ammo wheel (a bow held)
+		int  ammoWheelButton = 0;        // [Wheel] uAmmoWheelButton: the same for the Ammo wheel
 		int  animSpeedPercent = 300;  // [Wheel] uAnimSpeedPercent: the radial's pop-up / pop-out animations played at this speed (100 = the game's, 300 = three times as fast)
 		int  wheelButton = 0x0100;    // [Wheel] uWheelButton: XInput mask of the button that opens the game's quick-key wheel in gameplay (256 = LB, the game's default binding of IA_Game_QuickKeys_OpenMenu, the default here; 2 = D-pad down, the original plugin's assumption)
 		bool dpadDownPanel = false;    // [Controller] bDpadDownPanel: in the inventory / magic menu a hold on D-pad down presses the game's own Show Shortcuts (L3) for you, and a tap is replayed after the release; 0 = D-pad down stays the game's own and L3 opens the panel natively

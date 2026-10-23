@@ -1,4 +1,6 @@
 #include "Pad.h"
+#include "RadialSelection.h"
+#include "CloseEpoch.h"
 
 #include "Ammo.h"
 #include "Keyboard.h"
@@ -72,7 +74,8 @@ namespace pad
 		int       g_forceTries = 0;   // B pulses sent for this use: a radial the game keeps open on purpose (a message such as 'You cannot drink any more potions right now' waiting for A) must not be pulsed forever
 		int g_bPulse = 0;
 		bool g_closingMagic = false;   // the radial is closing on a Magic slot: the stick held centred, no slot pointed, until it has closed
-		bool g_magicPanel = false;   // the magic menu's panel is up (it reports no visibility change; tracked from our own toggles)
+		closeepoch::Epoch g_closeEpoch;   // the close ends early when the wheel button goes down again or the radial reports another opening (IWP-024)
+bool g_magicPanel = false;   // the magic menu's panel is up (it reports no visibility change; tracked from our own toggles)
 		bool g_swallowA = false;     // A was ours (the magic menu's panel): the game never sees it, until let go
 		bool g_swallowX = false;     // X (drop) on a favourite: the game never sees it, until let go
 		bool g_panelX = false;       // X went down on a pointed slot of an assign panel (held 0.6 s clears the slot)
@@ -131,23 +134,13 @@ namespace pad
 			if (m >= kStickOn) {
 				g_radialAway = true;
 				g_radialResting = false;
-				// after a snap the slot the game reports is no proof the stick points there: the game re-reports the OLD
-				// slot within a frame of the snap (2026-10-01 02:35:41.555). The snap ends when the game's slot agrees with
-				// the stick's angle, or after three reads out, from the angle itself.
+				// A fresh outward stick position is authoritative in this input read. The game's
+				// pointed event arrives later; waiting for it dropped a quick A after rest.
 				if (g_snapped) {
-					const int key = KeyFromStick(a_pad);
-					if (quickkeys::PointedSlot() - 1 == key) {
-						g_snapped = false;
-						g_unreported = 0;
-						quickkeys::RestorePointer(std::format("the stick points at slot {} again", key + 1).c_str());
-					} else if (++g_unreported >= 3) {
-						g_snapped = false;
-						g_unreported = 0;
-						quickkeys::Repoint(key);
-						quickkeys::RestorePointer(std::format("the stick points at slot {} again (from its angle)", key + 1).c_str());
-						logger::info("pad: the stick points at slot {} again after the rest snap and the wheel did not say so - pointed from the stick's angle",
-							key + 1);
-					}
+					g_snapped = false;
+					g_unreported = 0;
+					quickkeys::Repoint(KeyFromStick(a_pad));
+					quickkeys::RestorePointer("the stick points again");
 				}
 			} else if (g_snapped) {
 				quickkeys::HoldCleared();   // the stick still rests: the arrow stays hidden
@@ -171,8 +164,11 @@ namespace pad
 
 		// The wheel (HUD radial and menu panels alike) numbers its slots 1-8 as drawn, 1 at the top: key = number - 1
 		// (read 2026-09-29: pointing at the game's key 0 reported 1, key 7 reported 8; 0 / -1 = none)
+		int g_liveStickKey = -1;   // current HUD read, never a menu-panel or mouse selection
+
 		int PointedKey()
 		{
+			if (g_liveStickKey >= 0) return g_liveStickKey;
 			// after a rest snap nothing is pointed until the stick points again, whatever the game re-reports (2026-10-01:
 			// LT / RT right after a snap still cycled the old slot, and A 14 ms after one used it)
 			if (g_snapped && quickkeys::RadialOpen()) {
@@ -301,9 +297,31 @@ namespace pad
 		// Forgotten as soon as the pointer moves to another slot or the radial closes.
 		int g_stayUsedSlot = -1;
 
+		// A close that never ended: the wheel button went down again (or the radial reported another opening) before the radial reported closed,
+		// so the hold of the close - stick centred, nothing pointed, the game's key off its item, a pending B - would stay on the NEW wheel
+		// (IWP-024: the stick could point nothing, and the Equipment cell drew black). Every piece of close-side state is let go at once.
+		void AbandonClose(const char* a_why)
+		{
+			g_closingMagic = false;
+			g_closeEpoch.Reset();
+			g_forceClose = false;
+			g_forceTries = 0;
+			g_bPulse = 0;
+			g_leftToGame = false;
+			g_centreStick = 0;
+			g_stayUsedSlot = -1;
+			g_snapped = false;
+			g_unreported = 0;
+			g_radialAway = false;
+			g_radialResting = true;
+			wheels::ReleaseKey();
+			quickkeys::RestorePointer(a_why);
+			logger::info("pad: the wheel closing was abandoned - {}", a_why);
+		}
+
 		void CloseOnPointed(const char* a_how)
 		{
-			const int slot = settings::Get().chooseOnClose ? PointedKey() : -1;
+const int slot = settings::Get().chooseOnClose ? PointedKey() : -1;
 			if (slot >= 0 && slot == g_stayUsedSlot) {
 				g_stayUsedSlot = -1;
 				CloseOnNothing(a_how);
@@ -409,6 +427,7 @@ namespace pad
 
 		void Rewrite(XINPUT_GAMEPAD& a_pad)
 		{
+			g_liveStickKey = -1;
 			{   // a wheel's own button (INI [Wheel] uEquipmentWheelButton / uMagicWheelButton / uAmmoWheelButton): that wheel is made the
 				// active one, and the wheel button is held for as long as it is - so one press opens the radial on that wheel
 				static WORD s_prevDirect = 0;
@@ -423,7 +442,10 @@ namespace pad
 				for (const auto& [mask, wheel] : direct) {
 					if (!mask || mask == wheelBtn || !inGame || !(a_pad.wButtons & mask)) continue;
 					held |= mask;
-					if (!(s_prevDirect & mask)) wheels::SetActive(wheel);
+					if (!(s_prevDirect & mask)) {
+						if (wheels::Active() != wheel) g_stayUsedSlot = -1;
+						wheels::SetActive(wheel);
+					}
 				}
 				s_prevDirect = held;
 				if (held) a_pad.wButtons = static_cast<WORD>((a_pad.wButtons & ~held) | wheelBtn);
@@ -462,7 +484,7 @@ namespace pad
 			}
 			WORD out = raw;
 
-			// the ammo wheel (a bow held, its button in gameplay): while it is open it takes the read (Ammo.cpp)
+			// the ammo wheel (its button in gameplay): while it is open it takes the read (Ammo.cpp)
 			quickkeys::BoostAnimations();
 			wheelname::Tick();   // "Inventory Wheel" / "Magic Wheel" over the wheel on screen
 			magicwheel::Tick();   // the Magic wheel's own widget over the game's wheel; no spells on the inventory wheel
@@ -548,9 +570,11 @@ namespace pad
 					// (the owner, 2026-09-30: "I tried to select the alteration spell in there, but it wouldn't let me select
 					// it" - the panel read as showing and every A went to "assign with no slot pointed")
 					if (pressed & XINPUT_GAMEPAD_A) {
+						if (!wheels::Ready()) g_swallowA = true;
+						if (wheels::AssignmentWheel(menu) == wheels::Wheel::kAmmo) g_swallowA = true;
 						const int pointed = PointedKey();
 						if (pointed >= 0) {
-							if (menu == menus::Menu::kMagic) {
+							if (wheels::AssignmentWheel(menu) != wheels::Wheel::kEquipment) {
 								g_swallowA = true;
 							}
 							wheels::AssignPressed(menu, pointed);
@@ -571,12 +595,12 @@ namespace pad
 							g_panelXFired = true;
 							const int key = PointedKey();
 							if (key >= 0) {
-								wheels::ClearSlot(menu == menus::Menu::kMagic ? wheels::Wheel::kMagic : wheels::Wheel::kEquipment, key);
+								wheels::ClearSlot(wheels::AssignmentWheel(menu), key);
 							}
 						}
 					}
 					out &= ~(XINPUT_GAMEPAD_DPAD_LEFT | XINPUT_GAMEPAD_DPAD_RIGHT);
-					const auto wheel = menu == menus::Menu::kMagic ? wheels::Wheel::kMagic : wheels::Wheel::kEquipment;
+					const auto wheel = wheels::AssignmentWheel(menu);
 					// Assign-panel triggers belong to entry cycling, never to the menu's tab navigation.
 					if (!quickkeys::GameMessageUp()) {
 						if ((pressed & XINPUT_GAMEPAD_DPAD_LEFT) || ltPressed) { wheels::CycleEntry(wheel, PointedKey(), -1); }
@@ -616,6 +640,26 @@ namespace pad
 				const WORD wheelBtn = settings::Get().wheelButton ? static_cast<WORD>(settings::Get().wheelButton) : static_cast<WORD>(XINPUT_GAMEPAD_DPAD_DOWN);
 				const auto sinceDown = [&]() { return std::chrono::duration_cast<std::chrono::milliseconds>(now - g_gameDownAt).count(); };
 				const bool radialOpen = quickkeys::RadialOpen();
+				// The wheel button went down again while the last wheel was still closing (a quick reopen): its close hold must not carry over (IWP-024)
+				if (g_closeEpoch.Superseded(g_closingMagic, quickkeys::OpenCount(), (pressed & wheelBtn) != 0)) {
+					AbandonClose("the wheel button went down again before the radial reported closed");
+				}
+				// Resolve wheel and pointing before a same-read release or A/RB. Native hover
+// events still describe the previous game input when XInput is being read.
+				if (radialOpen && !g_leftToGame && !g_closingMagic && !(pressed & XINPUT_GAMEPAD_B)) {
+					const auto previousWheel = wheels::Active();
+					if (pressed & XINPUT_GAMEPAD_DPAD_LEFT) wheels::SwitchWheel(-1);
+					if (pressed & XINPUT_GAMEPAD_DPAD_RIGHT) wheels::SwitchWheel(+1);
+					if (wheels::Active() != previousWheel) g_stayUsedSlot = -1;
+					SnapToFilled(a_pad);
+					RestSnap(a_pad, now);
+					if (!keyboard::MouseOwnsRadial() && !keyboard::ScriptRunning()) {
+						g_liveStickKey = radialselection::LiveStickKey(a_pad.sThumbRX, a_pad.sThumbRY);
+						if (g_liveStickKey >= 0 && quickkeys::PointedSlot() != g_liveStickKey + 1)
+							quickkeys::Repoint(g_liveStickKey);
+					}
+				}
+
 				if (radialOpen && !g_sawRadialOpen) {
 					logger::info("pad: the wheel showed {} ms after the wheel button went down", sinceDown());
 				}
@@ -638,7 +682,7 @@ namespace pad
 					if (g_latched) {
 						g_latched = false;
 						g_suppressDown = true;   // the game sees the button go up: the wheel closes - on nothing
-						if (radialOpen) {
+						if (radialOpen && !(pressed & XINPUT_GAMEPAD_B)) {
 							CloseOnPointed("the wheel button pressed again");
 						}
 					} else {
@@ -664,7 +708,7 @@ namespace pad
 						g_pendingLatch = true;   // a tap let go before the wheel showed: keep it held for the game until it does
 						g_pendingSince = now;
 						logger::info("pad: wheel button tapped ({} ms) before the wheel showed - held for the game until it opens", sinceDown());
-					} else if (radialOpen) {
+					} else if (radialOpen && !(pressed & XINPUT_GAMEPAD_B)) {
 						CloseOnPointed("the wheel button let go");   // a hold let go: nothing used, on either wheel
 					} else {
 						logger::info("pad: wheel button up after {} ms and no wheel showed", sinceDown());
@@ -689,14 +733,10 @@ namespace pad
 					g_centreStick = kPulseReads * 2;
 					out &= ~wheelBtn;
 					logger::info("pad: B on the wheel - closed without using a slot");
-				} else if (quickkeys::RadialOpen() && !g_leftToGame) {
-					SnapToFilled(a_pad);
-					RestSnap(a_pad, now);
+				} else if (quickkeys::RadialOpen() && !g_leftToGame && !g_closingMagic) {
 					const int slot = PointedKey();
 					if (g_stayUsedSlot >= 0 && slot != g_stayUsedSlot && slot >= 0) g_stayUsedSlot = -1;   // pointed elsewhere: a later close may use that one
 					out &= ~((XINPUT_GAMEPAD_DPAD_LEFT | XINPUT_GAMEPAD_DPAD_RIGHT | XINPUT_GAMEPAD_LEFT_SHOULDER | XINPUT_GAMEPAD_RIGHT_SHOULDER) & ~wheelBtn);   // never the wheel button itself
-					if (pressed & XINPUT_GAMEPAD_DPAD_LEFT) { wheels::SwitchWheel(-1); }
-					if (pressed & XINPUT_GAMEPAD_DPAD_RIGHT) { wheels::SwitchWheel(+1); }
 					const int stepSlot = wheels::Active() == wheels::Wheel::kAmmo ? wheels::AmmoSlotAtRing(slot) : slot;   // the Ammo view draws its arrows at ring positions
 										if (ltPressed && stepSlot >= 0) { wheels::CycleEntry(wheels::Active(), stepSlot, -1); }
 										if (rtPressed && stepSlot >= 0) { wheels::CycleEntry(wheels::Active(), stepSlot, +1); }
@@ -818,11 +858,14 @@ namespace pad
 					g_bPulse = 0;
 				}
 			}
+			if (g_closeEpoch.Superseded(g_closingMagic, quickkeys::OpenCount(), false)) {
+				AbandonClose("the radial reported another opening before it reported closed");
+			}
 			if (g_closingMagic) {
 				if (!quickkeys::RadialOpen()) {
 					g_closingMagic = false;
 					wheels::ReleaseKey();
-					quickkeys::RestorePointer("the radial closed");   // the selector arrow back for the next opening
+quickkeys::RestorePointer("the radial closed");   // the selector arrow back for the next opening
 				} else {
 					a_pad.sThumbRX = 0;
 					a_pad.sThumbRY = 0;
@@ -831,7 +874,8 @@ namespace pad
 					}
 				}
 			}
-			if (g_centreStick > 0) {
+			g_closeEpoch.Note(g_closingMagic, quickkeys::OpenCount());
+if (g_centreStick > 0) {
 				a_pad.sThumbRX = 0;
 				a_pad.sThumbRY = 0;
 				--g_centreStick;

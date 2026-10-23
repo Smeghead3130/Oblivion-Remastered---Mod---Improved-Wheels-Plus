@@ -487,12 +487,20 @@ namespace quickkeys
 		return out;
 	}
 
+	void RequestRedraw() { g_redrew.store(true); }
+
 	bool TakeRedrew() { return g_redrew.exchange(false); }
 
 	bool RadialOpen()
 	{
 		std::scoped_lock l(g_statusLock);
 		return g_status.open;
+	}
+
+	std::uint32_t OpenCount()
+	{
+		std::scoped_lock l(g_statusLock);
+		return g_status.opens;
 	}
 
 	bool GameMessageUp()

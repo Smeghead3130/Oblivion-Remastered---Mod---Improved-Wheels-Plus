@@ -34,6 +34,7 @@ namespace quickkeys
 	void Tick();
 
 	bool RadialOpen();   // the HUD radial is showing
+	std::uint32_t OpenCount();   // how many openings of the radial have been reported (a reopen before any close report still counts)
 	bool PanelOpen();    // a menu's assign panel is showing
 	// one of the game's message boxes is up (WBP_ModernMenu_Message: "You cannot drink any more potions", "apply the poison?", "already poisoned"...):
 	// a click or A then answers it and must not be taken as a choice on the wheel behind it. Looked up when a choice is about to be made, not every read.
@@ -62,6 +63,7 @@ namespace quickkeys
 	// The eight slot pictures read by the active material overlay (MagicWheel.cpp).
 	using Icons = std::array<UE::UObject*, 8>;
 	Icons ReadIcons();
+	void RequestRedraw();   // force overlays to refresh after verified native cleanup
 	bool  TakeRedrew();     // the game redrew its own pictures since the last call (the overlay puts its own right at once)
 
 	struct Status

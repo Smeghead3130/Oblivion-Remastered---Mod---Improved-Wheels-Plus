@@ -8,7 +8,7 @@ NOT COMPATIBLE WITH OTHER WHEEL MODS: it takes over the game's quick-key radial 
 What this build adds to the original 1.0.1 is listed under ADDED IN THIS BUILD below and in CHANGELOG.md.
 
 Oblivion Remastered's own quick-key radial, made into a full wheel menu: eight slots that each hold several items, a
-Magic wheel of its own for spells, and an ammo wheel for your arrows while a bow is held. The game's own radial, button
+Magic wheel of its own for spells, and an ammo wheel for your arrows regardless of equipped weapon. The game's own radial, button
 prompts and quick keys are used throughout; the Inventory and Magic wheel pictures, pointers and title colors have a new look.
 
 ADDED IN THIS BUILD
@@ -76,9 +76,11 @@ WHAT YOU GET
     use slots in gameplay or assign the highlighted item/spell in menus. Existing ini files retain their bindings.
   * The Magic wheel: a separate wheel for spells, always drawn as itself. A pick makes the spell the one the cast
     button casts, and the HUD's quick-magic picture follows it.
-  * The ammo wheel: with a bow held, D-pad right opens a half wheel on the right-hand edge with the arrows you have
-    put on it; the right stick or D-pad up and down point, the button again or A equips, B closes. Its button is
-    rebindable from its own row on the game's Controls page.
+  * The Ammo wheel has eight cells, one arrow type per cell. In Inventory, highlight arrows and open Show Shortcuts
+    (L3), point at the desired cell and press A. Press A again on the same assignment to remove it; hold X to clear
+    a cell. The favourite shortcut still fills an empty cell. No bow is required to open Ammo or preselect arrows.
+    The radial and centred shortcut preserve your exact cell positions. Legacy edge mode stays compact for up to
+    five arrow types and automatically expands to a full ring for six to eight, so every assignment stays reachable.
   * Settings in ImprovedWheelMenu.ini: entries per slot, the rest snap and its time, the ammo wheel on/off, button
     and size, the log level.
 

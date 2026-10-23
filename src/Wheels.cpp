@@ -2,6 +2,8 @@
 #include "WheelStorage.h"
 #include "AtomicFile.h"
 #include "SessionContext.h"
+#include "KnownEntry.h"
+#include "EmptySetup.h"
 
 #include "Ammo.h"
 #include "Inventory.h"
@@ -37,6 +39,7 @@ namespace wheels
 		wheelstorage::Model g_wheels;
 		std::string g_loadedFor;   // the character g_wheels belongs to
 		bool g_storageRejected = false;   // never load or overwrite a file without our format and character identity
+		emptysetup::Gate g_emptySetup;
 		bool g_initializeEmpty = false;   // no stored wheel setup: clear native item keys once inventory is ready
 
 		int MigrateAmmo();
@@ -119,6 +122,7 @@ namespace wheels
 		void Load(const std::string& a_name)
 		{
 			g_wheels = {};
+			g_emptySetup.Reset();
 			g_initializeEmpty = false;
 			g_storageRejected = false;
 			g_loadedFor = a_name;
@@ -270,47 +274,42 @@ namespace wheels
 			}
 		}
 
-		// What the wheels hold that THIS character cannot have (a save loaded after another, or a spell or item lost since): taken
-		// off, so nothing ever tries to use or draw a form the save does not have (the owner, 2026-10-16: "I think this is going to
-		// crash the game if I load a save in which I dont have the assets that are stored on the wheel"). Run once, a moment after
-		// a character loads, when the inventory and the spell list exist - never on a half-built player, which would empty a wheel.
-		//   Magic - the form must exist, be a spell, and be known to the player
-		//   Equipment / Ammo - the form must exist, and be carried
+		// What the wheels hold that THIS character does not have now (a save loaded after another, or a spell or item lost since) is
+		// KEPT: a stored entry is the character's, not the save's, and a later save of the same character may carry it - erasing it here
+		// wiped the .iwp assignments of every later save (the audit of 2026-10-23). Nothing ever tries to use or draw a form the save
+		// does not have because the display and every use already filter by ownership (KnownMagicEntry, Unreachable, IsAmmo and
+		// inventory::Has in AmmoSlots / SlotCounts). Run once, a moment after a character loads, when the inventory and the spell list
+		// exist. It only repairs the structure (an empty form ID, an active entry outside the list) and writes the file again only for
+		// that; an unowned entry is logged once and left alone.
 		ULONGLONG g_sanitizeAt = 0;
 		bool      g_sanitized = true;
 
 		void Sanitize()
 		{
-			int removed = 0;
+			int repaired = 0, unowned = 0;
 			for (int w : { static_cast<int>(kEquip), static_cast<int>(kMagic), static_cast<int>(kAmmo) }) {
 				for (int s = 0; s < inventory::kSlots; ++s) {
 					Slot& slot = g_wheels[w][s];
 					if (slot.entries.empty()) continue;
-					const auto activeId = slot.active >= 0 && slot.active < static_cast<int>(slot.entries.size()) ? slot.entries[slot.active] : 0u;
-					std::vector<std::uint32_t> kept;
-					for (const auto id : slot.entries) {
-						bool ok = RE::TESForm::LookupByID(id) != nullptr;
-						if (ok && w == kMagic) {
-							ok = RE::TESForm::LookupByID<RE::SpellItem>(id) != nullptr && rows::PlayerHasSpell(id);
-						} else if (ok) {
-							ok = inventory::Has(id);
-						}
-						if (ok) {
-							kept.push_back(id);
-						} else {
-							++removed;
-							logger::info("wheels: {} 0x{:08X} taken off {} slot {} - this character does not have it", w == kMagic ? "spell" : "item", id, WheelName(w), s + 1);
-						}
+					if (wheelstorage::NormalizeSlot(slot)) {
+						++repaired;
+						logger::info("wheels: {} slot {} had an empty form ID or an active entry outside its list - repaired", WheelName(w), s + 1);
 					}
-					if (kept.size() != slot.entries.size()) {
-						const auto at = std::find(kept.begin(), kept.end(), activeId);
-						slot.entries = std::move(kept);
-						slot.active = slot.entries.empty() ? -1 : at != slot.entries.end() ? static_cast<int>(at - slot.entries.begin()) : 0;
+					for (const auto id : slot.entries) {
+						const bool owned = RE::TESForm::LookupByID(id) != nullptr &&
+							(w == kMagic ? rows::PlayerHasSpell(id) : inventory::Has(id) && (w != kAmmo || IsAmmo(id)));
+						if (!owned) {
+							++unowned;
+							logger::info("wheels: {} 0x{:08X} on {} slot {} is not owned, kept (this character may have it in another save)",
+								w == kMagic ? "spell" : "item", id, WheelName(w), s + 1);
+						}
 					}
 				}
 			}
-			if (removed) {
-				logger::info("wheels: {} entr{} this character does not have taken off the wheels", removed, removed == 1 ? "y" : "ies");
+			if (unowned) {
+				logger::info("wheels: {} stored entr{} not owned in this save, kept (shown only while owned)", unowned, unowned == 1 ? "y is" : "ies are");
+			}
+			if (repaired) {
 				Save();
 			}
 		}
@@ -331,19 +330,23 @@ namespace wheels
 			}
 			if (g_storageRejected) return false;
 			if (g_initializeEmpty) {
-				// Wait for the character's inventory to finish loading; do not mark first-use
-				// cleanup complete against an absent or half-built inventory.
+				// Keep saved setup absent and wheel actions blocked until native cleanup really completes.
+				// Never strip ExtraQuickKey here: the native remover needs it for its bookkeeping.
 				if (GetTickCount64() < g_sanitizeAt || !inventory::Ready() || AssignPending()) return false;
-				for (int s = 0; s < inventory::kSlots; ++s) inventory::ClearSlot(s);
-				g_initializeEmpty = false;
-				Save();   // record an empty per-character setup; later loads preserve deliberate assignments
-				logger::info("wheels: first-use initialization cleared all native item slots; empty wheel setup saved");
-				// the native spell hotkeys live in the same eight lists and no item key reaches them: the game's own clear, on the TES thread
-				if (testhread::Installed()) {
-					testhread::Post([] { inventory::ClearAllNativeKeys(); });
-				} else {
-					logger::warn("wheels: first-use initialization left the native spell hotkeys (the TES thread queue is not installed)");
+				if (!g_emptySetup.Complete()) {
+					if (testhread::Installed()) {
+						if (const auto ticket = g_emptySetup.Queue(GetTickCount64())) {
+							testhread::Post([ticket] {
+								g_emptySetup.Run(ticket, [] { return inventory::ClearAllNativeKeys(); });
+							});
+						}
+					}
+					return false;
 				}
+				g_initializeEmpty = false;
+				Save();
+				quickkeys::RequestRedraw();
+				logger::warn("wheels: empty setup ready - native item and spell hotkeys verified empty before assignments enabled");
 			}
 			if (!g_sanitized && GetTickCount64() >= g_sanitizeAt && inventory::Ready() && rows::PlayerSpellCount() > 0 &&
 				!AssignPending()) {
@@ -370,13 +373,20 @@ namespace wheels
 		//   Magic     - while it shows, every controller read puts the Magic wheel's pictures back if the game replaced
 		//               them, keeping what the game pushed so it goes back when the Magic wheel leaves the screen.
 
+		// Resolve the currently known entry each time, including when an earlier save loads
+		// without an observable context transition. Do not erase stored entries on a transient list.
+		int KnownMagicEntry(const Slot& a_slot, int a_from, int a_dir, bool a_includeFrom)
+		{
+			return knownentry::Find(a_slot.entries, a_from, a_dir, a_includeFrom, rows::PlayerHasSpell);
+		}
+
 		quickkeys::Icons MagicIcons()
 		{
 			quickkeys::Icons icons{};
 			for (int k = 0; k < inventory::kSlots; ++k) {
 				const Slot& slot = g_wheels[kMagic][k];
-				if (slot.active >= 0) {
-					icons[k] = rows::SpellIcon(slot.entries[slot.active]);
+				if (const int known = KnownMagicEntry(slot, slot.active, +1, true); known >= 0) {
+					icons[k] = rows::SpellIcon(slot.entries[known]);
 				}
 			}
 			return icons;
@@ -519,13 +529,13 @@ namespace wheels
 							slot.active = next;
 						}
 					}
-				} else if (slot.active >= 0) {
+				} else if (slot.active >= 0 && slot.active < static_cast<int>(slot.entries.size())) {
 					inventory::SetKey(slot.entries[slot.active], a_slot);
 				}
 			}
 			logger::info("wheels: {} - {} REMOVED from {} slot {}; slot now {} entr{} (active: {})", a_why, NameOf(a_wheel, gone),
 				WheelName(a_wheel), a_slot + 1, slot.entries.size(), slot.entries.size() == 1 ? "y" : "ies",
-				slot.active >= 0 ? NameOf(a_wheel, slot.entries[slot.active]) : "none");
+				slot.active >= 0 && slot.active < static_cast<int>(slot.entries.size()) ? NameOf(a_wheel, slot.entries[slot.active]) : "none");
 		}
 
 		// Favourites the player dropped or sold (bBlockFavouriteDropSell=0): once none is carried they leave every wheel, the Equipment
@@ -1244,12 +1254,15 @@ namespace wheels
 				g_hudCheckAt = {};
 				g_hudIconBefore = nullptr;
 				g_loadedFor.clear();
+				g_emptySetup.Reset();
 				g_initializeEmpty = false;
 				g_sanitized = false;
 			}
 			return now.context.ready;
 		}
 	}
+
+	bool Ready() { return EnsureLoaded(); }
 
 	const char* Name(Wheel a_wheel)
 	{
@@ -1326,23 +1339,20 @@ namespace wheels
 		const auto keys = w == kEquip ? inventory::Keys() : inventory::KeyMap{};
 		for (int s = 0; s < inventory::kSlots; ++s) {
 			const Slot& slot = g_wheels[w][s];
+			const int shown = w == kMagic ? KnownMagicEntry(slot, slot.active, +1, true) : slot.active;
 			for (int i = 0; i < static_cast<int>(slot.entries.size()); ++i) {
-				if (w == kEquip && !Unreachable(s, slot.entries[i], keys).empty()) {
+				if ((w == kEquip && !Unreachable(s, slot.entries[i], keys).empty()) ||
+					(w == kMagic && !rows::PlayerHasSpell(slot.entries[i])) ||
+					(w == kAmmo && (!IsAmmo(slot.entries[i]) || !inventory::Has(slot.entries[i])))) {
 					continue;
 				}
 				++out[s].count;
-				if (i == slot.active) {
+				if (i == shown) {
 					out[s].position = out[s].count;
 				}
 			}
 		}
-		if (w == kAmmo) {   // the radial's Ammo view: the counters sit at the ring positions the arrows are drawn at
-			std::array<SlotCount, 8> ring{};
-			for (int r = 0; r < 8; ++r) {
-				if (const int s2 = AmmoSlotAtRing(r); s2 >= 0) ring[r] = out[s2];
-			}
-			return ring;
-		}
+
 		return out;
 	}
 
@@ -1376,7 +1386,8 @@ namespace wheels
 		}
 		for (int s = 0; s < inventory::kSlots; ++s) {
 			const Slot& slot = g_wheels[kMagic][s];
-			out[s] = slot.active >= 0 ? slot.entries[slot.active] : 0;
+			const int known = KnownMagicEntry(slot, slot.active, +1, true);
+			out[s] = known >= 0 ? slot.entries[known] : 0;
 		}
 		return out;
 	}
@@ -1389,37 +1400,24 @@ namespace wheels
 		}
 		for (int s = 0; s < inventory::kSlots; ++s) {
 			const Slot& slot = g_wheels[kAmmo][s];
-			const auto id = slot.active >= 0 ? slot.entries[slot.active] : 0;
-			out[s] = id && inventory::Has(id) ? id : 0;
+			const auto id = slot.active >= 0 && slot.active < static_cast<int>(slot.entries.size()) ? slot.entries[slot.active] : 0u;
+			out[s] = id && IsAmmo(id) && inventory::Has(id) ? id : 0;
 		}
 		return out;
 	}
 
-	// The Ammo wheel as the shortcut's half wheel lays it out: the favourited arrows packed in slot order (five at most), the first count placed at
-	// the ring positions ammo::LayoutSlots gives. The radial's Ammo view draws and chooses by the same places.
+	// The radial and Inventory panel preserve the eight saved cell positions.
 	int AmmoSlotAtRing(int a_ring)
 	{
-		if (a_ring < 0 || a_ring > 7) return -1;
-		const auto  slots = AmmoSlots();
-		std::vector<int> used;
-		for (int s = 0; s < 8 && used.size() < 5; ++s) {
-			if (slots[s]) used.push_back(s);
-		}
-		const auto layout = ammo::LayoutSlots(static_cast<int>(used.size()));
-		for (std::size_t i = 0; i < used.size(); ++i) {
-			if (layout[i] - 1 == a_ring) return used[i];
-		}
-		return -1;
+		return a_ring >= 0 && a_ring < 8 && AmmoSlots()[a_ring] ? a_ring : -1;
 	}
 
-	std::array<std::uint32_t, 8> AmmoRingSlots()
+	std::array<std::uint32_t, 8> AmmoRingSlots() { return AmmoSlots(); }
+
+	Wheel AssignmentWheel(menus::Menu a_menu)
 	{
-		std::array<std::uint32_t, 8> out{};
-		const auto                   slots = AmmoSlots();
-		for (int r = 0; r < 8; ++r) {
-			if (const int s = AmmoSlotAtRing(r); s >= 0) out[r] = slots[s];
-		}
-		return out;
+		if (a_menu == menus::Menu::kMagic) return Wheel::kMagic;
+		return a_menu == menus::Menu::kInventory && IsAmmo(rows::HighlightedItem()) ? Wheel::kAmmo : Wheel::kEquipment;
 	}
 
 	void AssignHighlighted(menus::Menu a_menu, int a_slot)
@@ -1450,7 +1448,7 @@ namespace wheels
 			RemoveAt(wheel, a_slot, idx, std::format("slot key {} pressed again on it", a_slot + 1));
 		} else {
 			RemoveFromOtherSlots(wheel, a_slot, id);   // an item is on one slot
-			if (static_cast<int>(slot.entries.size()) >= Cap()) {
+			if (static_cast<int>(slot.entries.size()) >= (wheel == kAmmo ? 1 : Cap())) {
 				RemoveAt(wheel, a_slot, static_cast<int>(slot.entries.size()) - 1, std::format("slot {} is full - its last entry leaves for the new one", a_slot + 1));
 			}
 			AddTo(wheel, a_slot, id, "slot key");
@@ -1478,6 +1476,10 @@ namespace wheels
 
 	void AssignPressed(menus::Menu a_menu, int a_slot)
 	{
+		if (AssignmentWheel(a_menu) == Wheel::kAmmo) {
+			AssignHighlighted(a_menu, a_slot);   // data only: never assign arrows to native Equipment hotkeys
+			return;
+		}
 		if (!EnsureLoaded()) {
 			return;
 		}
@@ -1577,7 +1579,7 @@ namespace wheels
 
 	void CycleEntry(Wheel a_wheel, int a_slot, int a_dir)
 	{
-		if (a_slot < 0) {
+		if (a_slot < 0 || a_slot >= inventory::kSlots) {
 			logger::info("wheels: CYCLE with no slot pointed - nothing to cycle");
 			return;
 		}
@@ -1590,7 +1592,9 @@ namespace wheels
 		int next = -1;
 		std::string skipped;
 		if (w == kMagic) {
-			next = n > 1 ? ((slot.active < 0 ? 0 : slot.active) + a_dir + n) % n : -1;
+			// Cycle from the entry currently displayed, skipping spells absent from this save.
+			const int shown = KnownMagicEntry(slot, slot.active, +1, true);
+			next = KnownMagicEntry(slot, shown, a_dir, false);
 		} else if (n > 0) {
 			next = NextEquipment(a_slot, slot.active < 0 ? (a_dir > 0 ? -1 : 0) : slot.active, a_dir, &skipped);
 		}
@@ -1616,9 +1620,9 @@ namespace wheels
 
 	void SwitchWheel(int a_dir)
 	{
-		// Equipment -> Magic -> (Ammo, while a bow is held) -> Equipment; left goes the other way round
+		// Equipment -> Magic -> Ammo (when enabled) -> Equipment; left goes the other way round
 		std::vector<Wheel> order{ Wheel::kEquipment, Wheel::kMagic };
-		if (settings::Get().ammoWheel && ammo::BowHeld()) order.push_back(Wheel::kAmmo);
+		if (settings::Get().ammoWheel) order.push_back(Wheel::kAmmo);
 		int at = 0;
 		for (int i = 0; i < static_cast<int>(order.size()); ++i) {
 			if (order[static_cast<std::size_t>(i)] == Active()) at = i;
@@ -1639,8 +1643,8 @@ namespace wheels
 
 	void SetActive(Wheel a_wheel)
 {
-		if (a_wheel == Wheel::kAmmo && !(settings::Get().ammoWheel && ammo::BowHeld())) {
-			logger::info("wheels: the Ammo wheel's button - no bow is held, nothing to show");
+		if (a_wheel == Wheel::kAmmo && !(settings::Get().ammoWheel)) {
+			logger::info("wheels: the Ammo wheel's button - Ammo is disabled, nothing to show");
 			return;
 		}
 		g_keepUntil = GetTickCount64() + 1500;   // this press chose the wheel the radial opens on
@@ -1659,7 +1663,7 @@ logger::info("wheels: the {} wheel's own button - it is the active wheel", Name(
 		if (a_slot < 0 || a_slot >= inventory::kSlots || quickkeys::GameMessageUp() || !EnsureLoaded()) return;
 		if (Active() == Wheel::kMagic) { UseMagic(a_slot); return; }
 		if (Active() == Wheel::kAmmo) {
-			if (settings::Get().ammoWheel && ammo::BowHeld()) UseAmmo(a_slot);
+			if (settings::Get().ammoWheel) UseAmmo(a_slot);
 			return;
 		}
 		const Slot& slot = g_wheels[kEquip][a_slot];
@@ -1777,7 +1781,7 @@ logger::info("wheels: the {} wheel's own button - it is the active wheel", Name(
 
 	void UseMagic(int a_slot)
 	{
-		if (a_slot < 0) {
+		if (a_slot < 0 || a_slot >= inventory::kSlots) {
 			logger::info("wheels: the Magic wheel closed on no slot - nothing cast-ready changed");
 			return;
 		}
@@ -1785,14 +1789,16 @@ logger::info("wheels: the {} wheel's own button - it is the active wheel", Name(
 			return;
 		}
 		const Slot& slot = g_wheels[kMagic][a_slot];
-		if (slot.active < 0) {
-			logger::info("wheels: Magic slot {} is empty", a_slot + 1);
+		const int known = KnownMagicEntry(slot, slot.active, +1, true);
+		if (known < 0) {
+			logger::info("wheels: Magic slot {} has no spell known in this save", a_slot + 1);
 			return;
 		}
-		auto* spell = RE::TESForm::LookupByID<RE::SpellItem>(slot.entries[slot.active]);
+		const auto id = slot.entries[known];
+		auto* spell = RE::TESForm::LookupByID<RE::SpellItem>(id);
 		auto* player = RE::PlayerCharacter::GetSingleton();
 		if (!spell || !player) {
-			logger::warn("wheels: Magic slot {} holds 0x{:08X}, which is not a spell now", a_slot + 1, slot.entries[slot.active]);
+			logger::warn("wheels: Magic slot {} holds 0x{:08X}, which is not a spell now", a_slot + 1, id);
 			return;
 		}
 		// the SELECTED spell - the one the HUD shows and the cast button casts - is set by the game's own PlayerCharacter::
@@ -1806,6 +1812,8 @@ logger::info("wheels: the {} wheel's own button - it is the active wheel", Name(
 			before == static_cast<RE::MagicItem*>(spell) ? "it was already" : before ? "another spell was" : "none was");
 		{
 			testhread::Post([formID] {
+				// The save can change after input was queued: ownership must still hold on the TES thread.
+				if (!rows::PlayerHasSpell(formID)) return;
 				inventory::SweepNativeSpellKeys();   // the game's own key must find no spell of its own to select once we have chosen
 				auto* pc = RE::PlayerCharacter::GetSingleton();
 				auto* sp = RE::TESForm::LookupByID<RE::SpellItem>(formID);
@@ -1862,7 +1870,7 @@ logger::info("wheels: the {} wheel's own button - it is the active wheel", Name(
 			logger::info("wheels: the radial opens on the Equipment wheel (bRememberWheel=0)");
 		}
 		g_keepUntil = 0;
-if (Active() == Wheel::kAmmo && !(settings::Get().ammoWheel && ammo::BowHeld())) {
+if (Active() == Wheel::kAmmo && !(settings::Get().ammoWheel)) {
 			g_active.store(static_cast<int>(Wheel::kEquipment));
 		}
 		if (EnsureLoaded()) {

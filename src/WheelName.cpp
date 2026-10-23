@@ -188,7 +188,7 @@ ui::Visible(root, false);
 			}
 			const int pointed = quickkeys::PointedSlot();   // 1..8, 0 / -1 none
 			// nothing pointed, or an empty slot: blank (the game's own text there is "Shortcut")
-			const auto id = pointed >= 1 && pointed <= 8 ? (a_mode == 1 ? wheels::MagicSlots()[static_cast<std::size_t>(pointed - 1)] :a_mode == 2 ? wheels::AmmoRingSlots()[static_cast<std::size_t>(pointed - 1)] : inventory::Keys()[static_cast<std::size_t>(pointed - 1)]) : 0u;
+			const auto id = pointed >= 1 && pointed <= 8 ? (a_mode == 1 ? wheels::MagicSlots()[static_cast<std::size_t>(pointed - 1)] :a_mode == 2 ? wheels::AmmoRingSlots()[static_cast<std::size_t>(pointed - 1)] : (wheels::Ready() ? inventory::Keys()[static_cast<std::size_t>(pointed - 1)] : 0u)) : 0u;
 			std::string text = " ";
 			if (id) {
 				std::string name = a_mode == 1 ? rows::SpellName(id) : inventory::NameOf(id);
@@ -268,7 +268,7 @@ ui::Visible(root, false);
 		if (quickkeys::RadialOpen()) {
 			name = wheels::Active() == wheels::Wheel::kMagic ? "Magic Wheel" : wheels::Active() == wheels::Wheel::kAmmo ? "Ammo Wheel" : "Inventory Wheel";
 		} else if (menu == menus::Menu::kInventory && quickkeys::PanelOpen()) {
-			name = "Inventory Wheel";
+			name = wheels::AssignmentWheel(menu) == wheels::Wheel::kAmmo ? "Ammo Wheel" : "Inventory Wheel";
 		} else if (menu == menus::Menu::kMagic && pad::MagicPanelUp()) {
 			name = "Magic Wheel";
 		}

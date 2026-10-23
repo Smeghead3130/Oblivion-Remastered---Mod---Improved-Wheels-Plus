@@ -1,4 +1,5 @@
 #include "Ammo.h"
+#include "AmmoLayout.h"
 #include "UiText.h"
 
 #include "Inventory.h"
@@ -20,7 +21,6 @@ namespace ammo
 		constexpr int    kSlots = 8;
 		constexpr double kStickOn = 0.45;     // the right stick points once it is this far out
 		constexpr double kStickRest = 0.25;   // and is at rest inside this
-		constexpr int    kBowType = 5;        // TESObjectWEAP data.type: 0-1 blade, 2-3 blunt, 4 staff, 5 bow
 		constexpr WORD   kDpad = XINPUT_GAMEPAD_DPAD_UP | XINPUT_GAMEPAD_DPAD_DOWN | XINPUT_GAMEPAD_DPAD_LEFT | XINPUT_GAMEPAD_DPAD_RIGHT;
 		constexpr const wchar_t* kFullNames = L"/Game/Localization/StringTables/ST_FullNames.ST_FullNames";
 		// the main wheel's own slot circle (a gold rim, a dark inside): the texture its material draws each slot with,
@@ -32,6 +32,8 @@ namespace ammo
 		// ---- the widget (game thread; kept across frames as slot-checked handles) ----
 		reflect::Handle g_root, g_label;
 		std::array<reflect::Handle, kSlots> g_icon, g_iconSlot, g_ring, g_ringSlot;   // each entry: its circle, its arrows on it
+		bool      g_centred = true;   // full ring; legacy half layout falls back here above five entries
+		std::array<int, kSlots> g_savedSlots{};
 		int       g_layoutCount = -1;   // the entry count the positions were last laid out for
 
 		// The game's own wheel, sliced in half (the owner, 2026-09-30: "the arrows icons and slot outline is too small ... the
@@ -156,11 +158,17 @@ namespace ammo
 		std::string       g_last = "never opened";
 		std::uint32_t     g_opens = 0, g_equips = 0;
 
+		// The TES thread may change the player's item list while the UI thread reads it, and a node freed under a walk faults: the
+		// raw reads sit in helpers of plain pointers (__try cannot unwind C++ objects, C2712) and a fault reads as "nothing".
 		RE::BSSimpleList<RE::ItemChange*>* Items()
 		{
-			auto* player = RE::PlayerCharacter::GetSingleton();
-			auto* changes = player ? player->extra.GetExtraData<RE::ExtraContainerChanges>() : nullptr;
-			return changes && changes->changes ? changes->changes->list : nullptr;
+			__try {
+				auto* player = RE::PlayerCharacter::GetSingleton();
+				auto* changes = player ? player->extra.GetExtraData<RE::ExtraContainerChanges>() : nullptr;
+				return changes && changes->changes ? changes->changes->list : nullptr;
+			} __except (EXCEPTION_EXECUTE_HANDLER) {
+				return nullptr;
+			}
 		}
 
 		bool Worn(RE::ExtraDataList* a_list)
@@ -168,35 +176,29 @@ namespace ammo
 			return a_list && (a_list->GetExtraData(RE::EXTRA_DATA_TYPE::Worn) || a_list->GetExtraData(RE::EXTRA_DATA_TYPE::WornLeft));
 		}
 
-		// a bow worn - and which arrows are (0 = none)
-		bool BowHeld(std::uint32_t& a_wornAmmo)
+		std::uint32_t WornAmmoGuarded(RE::BSSimpleList<RE::ItemChange*>* a_items)
 		{
-			a_wornAmmo = 0;
-			bool bow = false;
+			using ItemNode = RE::BSSimpleList<RE::ItemChange*>::Node;
+			using ExtraNode = RE::BSSimpleList<RE::ExtraDataList*>::Node;
+			__try {
+				for (auto* node = reinterpret_cast<ItemNode*>(a_items); node; node = node->next) {
+					RE::ItemChange* item = node->item;
+					if (!item || !item->object || !item->extraData || item->count <= 0 ||
+						item->object->GetFormType() != RE::FormType::Ammo) continue;
+					for (auto* xn = reinterpret_cast<ExtraNode*>(item->extraData); xn; xn = xn->next) {
+						if (Worn(xn->item)) return item->object->GetFormID();
+					}
+				}
+			} __except (EXCEPTION_EXECUTE_HANDLER) {
+			}
+			return 0;
+		}
+
+		// Read currently worn arrows independently of the weapon: Ammo can be preselected with no bow.
+		std::uint32_t WornAmmo()
+		{
 			auto* items = Items();
-			if (!items) {
-				return false;
-			}
-			for (RE::ItemChange* item : *items) {
-				if (!item || !item->object || !item->extraData || item->count <= 0) {
-					continue;
-				}
-				bool worn = false;
-				for (RE::ExtraDataList* xl : *item->extraData) {
-					worn = worn || Worn(xl);
-				}
-				if (!worn) {
-					continue;
-				}
-				const auto type = item->object->GetFormType();
-				if (type == RE::FormType::Weapon) {
-					auto* weap = item->object->As<RE::TESObjectWEAP>();
-					bow = bow || (weap && weap->data.type == kBowType);
-				} else if (type == RE::FormType::Ammo) {
-					a_wornAmmo = item->object->GetFormID();
-				}
-			}
-			return bow;
+			return items ? WornAmmoGuarded(items) : 0;
 		}
 
 		double Radius() { return 317.0 * settings::Get().ammoScalePercent / 100.0; }   // half of the HUD wheel's 634
@@ -220,7 +222,7 @@ namespace ammo
 		std::array<double, 2> Place(int a_i, int a_n)
 		{
 			const double R = Radius(), r = R * 0.62;
-			const double th = EntryAngle(a_i, a_n) * std::numbers::pi / 180.0;
+			const double th = (g_centred ? SlotMathAngle(g_savedSlots[a_i] + 1) : EntryAngle(a_i, a_n)) * std::numbers::pi / 180.0;
 			return { R + r * std::cos(th), R - r * std::sin(th) };
 		}
 
@@ -231,7 +233,7 @@ namespace ammo
 			if (g_material) {
 				const auto slots = HalfSlots(a_n);
 				g_entryId.fill(0);
-				for (int i = 0; i < a_n && i < kHalfSlots; ++i) g_entryId[static_cast<std::size_t>(i)] = slots[static_cast<std::size_t>(i)];
+				for (int i = 0; i < a_n && i < kSlots; ++i) g_entryId[i] = g_centred ? g_savedSlots[i] + 1 : slots[i];
 				g_layoutCount = a_n;
 				g_shownIds = {};
 				g_midPointed = -2;
@@ -288,7 +290,7 @@ namespace ammo
 				logger::warn("ammo: the wheel's panel could not be made");
 				return false;
 			}
-			const bool centred = settings::Get().ammoCentred;   // INI [AmmoWheel] uPosition: the whole ring in the middle of the screen
+			const bool centred = g_centred;   // INI [AmmoWheel] uPosition: the whole ring in the middle of the screen
 			if (centred) {
 				ui::Anchors(panelSlot, 0.5, 0.5, 0.5, 0.5);
 				ui::Vec2(panelSlot, L"SetAlignment", 0.5, 0.5);
@@ -327,7 +329,7 @@ namespace ammo
 					}
 				}
 			}
-			logger::info("ammo: the wheel is {}", g_material ? "the game's own (MIC_UI_QuickKeys), its left half" : "drawn (the game's wheel material could not be instanced)");
+			logger::info("ammo: the wheel is {}", g_material ? (g_centred ? "the game's full eight-cell Ammo ring" : "the game's own (MIC_UI_QuickKeys), its left half") : "drawn (the game's wheel material could not be instanced)");
 			const double panelW = centred ? R : g_material ? R * (1.0 + kOverhang) : R;   // how far the name sits left of the wheel's edge
 
 			UE::UObject* backSlot = nullptr;
@@ -417,7 +419,7 @@ namespace ammo
 			g_shownText.clear();
 			g_drawnPointed = -2;
 			ui::Visible(root, false);
-			logger::info("ammo: the wheel is built (build {}; a half circle {:.0f} tall on the middle of the right-hand edge)", g_builds, 2.0 * R);
+			logger::info("ammo: the wheel is built (build {}; {} layout, {:.0f} tall)", g_builds, g_centred ? "full eight-cell" : "compact half", 2.0 * R);
 			return true;
 		}
 
@@ -469,7 +471,7 @@ namespace ammo
 			auto* mid = reflect::Get(g_mid);
 			if (!mid) return;
 			std::array<UE::UObject*, 9> tex{};
-			for (int i = 0; i < g_count && i < kHalfSlots; ++i) {
+			for (int i = 0; i < g_count && i < kSlots; ++i) {
 				const int slot = g_entryId[static_cast<std::size_t>(i)];
 				if (slot >= 1 && slot <= 8 && g_ids[i]) {
 					tex[static_cast<std::size_t>(slot)] = rows::ItemIcon(g_ids[i]);
@@ -493,7 +495,7 @@ namespace ammo
 			}
 			if (g_pointed != g_midPointed) {
 				// the game's own selector: SelectorRotator is a fraction of a turn clockwise from the top (slot n = (n-1)/8)
-				const int slot = g_pointed >= 0 && g_pointed < kHalfSlots ? g_entryId[static_cast<std::size_t>(g_pointed)] : 0;
+				const int slot = g_pointed >= 0 && g_pointed < kSlots ? g_entryId[static_cast<std::size_t>(g_pointed)] : 0;
 				// nothing pointed (or an empty wheel): the selector goes to slot 3, in the clipped-off right half - the
 				// material's own default lights slot 8 (the owner, 2026-09-30: "box number eight is highlighted permanently")
 				MidScalar(mid, L"SelectorRotator", slot >= 1 ? static_cast<float>(slot - 1) / 8.0f : kHiddenSelector);
@@ -594,25 +596,9 @@ namespace ammo
 				if (!player || !items) {
 					return;
 				}
-				// the arrows' extra data lists: how many, how many worn, and the counts they carry (a duplicated stack shows here)
-				const auto lists = [](RE::ItemChange* a_item) {
-					int n = 0, worn = 0;
-					std::string counts;
-					if (a_item->extraData) {
-						for (RE::ExtraDataList* xl : *a_item->extraData) {
-							if (!xl) continue;
-							++n;
-							worn += Worn(xl) ? 1 : 0;
-							// ExtraCount (0x2A): its count right after the BSExtraData header, as ExtraQuickKey's key at +0x18 (Inventory.cpp)
-							const auto* c = reinterpret_cast<const std::uint8_t*>(xl->GetExtraData(RE::EXTRA_DATA_TYPE::Count));
-							const int   cnt = c ? *reinterpret_cast<const std::int16_t*>(c + 0x18) : 1;
-							counts += std::format("{}{}{}", counts.empty() ? "" : ",", cnt, Worn(xl) ? "w" : "");
-						}
-					}
-					return std::format("{} list(s), {} worn [{}]", n, worn, counts);
-				};
 				for (RE::ItemChange* item : *items) {
-					if (item && item->object && item->object->GetFormID() == a_id && item->count > 0) {
+					if (item && item->object && item->object->GetFormID() == a_id && item->count > 0 &&
+						item->object->GetFormType() == RE::FormType::Ammo) {
 						// already worn: nothing to do. Every open of the wheel used to equip the stack again (40 equips of the
 						// same iron arrows in one session) and the owner saw the arrows duplicated in the inventory (2026-09-30)
 						bool worn = false;
@@ -622,16 +608,19 @@ namespace ammo
 							}
 						}
 						if (worn) {
-							logger::info("ammo: {} are worn already - nothing equipped ({})", inventory::NameOf(a_id), lists(item));
+							logger::info("ammo: {} are worn already - nothing equipped", inventory::NameOf(a_id));
 							return;
 						}
 						// arrows are worn as the whole stack; no lock (EquipObject's last argument is the console's NoUnequip)
-						player->EquipObject(item->object, item->count, nullptr, false, false);
-						logger::info("ammo: {} x{} equipped (TES thread) - now {}", inventory::NameOf(a_id), item->count, lists(item));
+						// EquipObject may rebuild inventory entries: do not dereference item after it returns.
+						const auto count = item->count;
+						const auto name = inventory::NameOf(a_id);
+						player->EquipObject(item->object, count, nullptr, false, false);
+						logger::info("ammo: {} x{} equipped (TES thread)", name, count);
 						return;
 					}
 				}
-				logger::info("ammo: {} is not carried any more - nothing equipped", inventory::NameOf(a_id));
+				logger::info("ammo: 0x{:08X} is not carried ammunition - nothing equipped", a_id);
 			});
 		}
 
@@ -650,14 +639,15 @@ namespace ammo
 			if (th < 0) {
 				th += 360.0;
 			}
-			if (th < 90.0 || th > 270.0) {
+			if (!g_centred && (th < 90.0 || th > 270.0)) {
 				th = a_y >= 0 ? kArcFrom : kArcTo;   // pointed right, off the wheel: the nearer end
 			}
 			int    i = -1;
 			double best = 1e9;
 			for (int k = 0; k < g_count; ++k) {   // the entry whose angle is nearest
-				const double ang = g_material ? SlotMathAngle(g_entryId[static_cast<std::size_t>(k)]) : EntryAngle(k, g_count);
-				const double d = std::abs(th - ang);
+				const double ang = g_centred ? SlotMathAngle(g_savedSlots[k] + 1) : g_material ? SlotMathAngle(g_entryId[k]) : EntryAngle(k, g_count);
+				double d = std::fmod(std::abs(th - ang), 360.0);
+				d = std::min(d, 360.0 - d);
 				if (d < best) {
 					best = d;
 					i = k;
@@ -678,19 +668,22 @@ namespace ammo
 			if (!s.ammoWheel || !button || !a_gameplay || a_radialOpen || !(a_pressed & button)) {
 				return false;
 			}
-			std::uint32_t worn = 0;
-			if (!BowHeld(worn)) {
-				return false;   // without a bow the button is the game's
+			const auto worn = WornAmmo();
+			// Keep true saved cell indices in full-ring mode. No arrow type is truncated.
+			const auto slots = wheels::AmmoSlots();
+			const auto layout = ammolayout::Build(slots, s.ammoCentred);
+			const bool centred = layout.full;
+			if (centred != g_centred) {
+				if (auto* root = reflect::Get(g_root)) ui::Call(root, L"RemoveFromParent").Run();
+				g_root = {};
+				g_centred = centred;
+				g_lastBuild = 0;
 			}
-			if (!Built() && !Build()) {
-				return false;
-			}
-			// the favourited arrows, packed in slot order: one entry each
-			g_ids = {};
-			g_count = 0;
-			for (const auto id : wheels::AmmoSlots()) {
-				if (id && g_count < (g_material ? kHalfSlots : kSlots)) g_ids[static_cast<std::size_t>(g_count++)] = id;   // the half wheel holds five
-			}
+			if (!Built() && !Build()) return false;
+			g_ids = layout.ids;
+			g_count = layout.count;
+			g_savedSlots = layout.savedSlots;
+			g_layoutCount = -1;   // saved positions can change without changing the entry count
 			g_worn = worn;
 			const int filled = g_count;
 			EnsureMid();
@@ -770,17 +763,6 @@ namespace ammo
 
 	bool Open() { return g_open; }
 
-	std::array<int, 5> LayoutSlots(int a_count)
-	{
-		return HalfSlots(a_count);
-	}
-
-	bool BowHeld()
-	{
-		std::uint32_t worn = 0;
-		return BowHeld(worn);
-	}
-
 	void EquipArrows(std::uint32_t a_formID)
 	{
 		Equip(a_formID);
@@ -804,7 +786,7 @@ namespace ammo
 		const double ring = settings::Get().display.cellRingPercent / 100.0;
 		double       bestDist = half * settings::Get().display.cellHitPercent / 100.0;
 		int          best = -1;
-		for (int i = 0; i < g_count && i < kHalfSlots; ++i) {
+		for (int i = 0; i < g_count && i < kSlots; ++i) {
 			const int slot = g_entryId[static_cast<std::size_t>(i)];
 			if (slot < 1 || !g_ids[static_cast<std::size_t>(i)]) continue;
 			const double ang = (slot - 1) * 45.0 * std::numbers::pi / 180.0;
