@@ -3,6 +3,18 @@
 Written as changes happen, not reconstructed afterwards (rule 61). Started 2026-09-29; the history before this file is
 in `git log`. A version number is issued by the version gate only once a build is seen working in game (rule 48).
 
+## 2.4.0 - 2026-10-23 - Improved Wheels Plus
+
+### Added
+- Slow motion while a gameplay wheel is open (Equipment, Magic or Ammo): the game world slows to one tenth speed and goes back to normal the moment the wheel closes. It is on by default. `[Wheel] bSlowTime=0` turns it off and `uSlowTimePercent` (1 to 99) sets the speed. It may not be compatible with other slow-down mods. Sound is not slowed.
+
+### Fixed
+- Loading an earlier save of the same character no longer lets a later menu visit remove Equipment, Ammo and Favourite entries from your wheels.
+- Choosing Magic or Ammo with a click in the main R wheel no longer leaves Q and E unable to switch wheels until the wheel is closed and opened again.
+
+### Changed
+- Less work every frame: the plugin no longer looks for open game messages on every read while a wheel or panel is open and nothing is pressed. In a diagnostic build on one machine, message look-ups fell from about 171 to about 13 per second and the time spent per controller read from 4.1 to 0.7 ms. This is a measure of the plugin's own work, not a measured frame-rate gain.
+
 ## 2.3.0 - 2026-10-23 - Improved Wheels Plus
 
 ### Added
