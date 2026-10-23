@@ -3,6 +3,28 @@
 Written as changes happen, not reconstructed afterwards (rule 61). Started 2026-09-29; the history before this file is
 in `git log`. A version number is issued by the version gate only once a build is seen working in game (rule 48).
 
+## 2.3.0 - 2026-10-23 - Improved Wheels Plus
+
+### Added
+- The Ammo wheel now has eight cells, one arrow type each. Assign arrows from the Inventory: highlight them, press L3 (Show Shortcuts), point at a cell and press A, as for the other wheels. Every arrow stays in the exact cell you chose.
+- No bow is needed any more to open the Ammo wheel or to choose arrows on it.
+- The edge-style Ammo wheel (uPosition=0) becomes a full ring on its own above five arrow types, so every assignment stays reachable.
+
+### Changed
+- The Ammo wheel no longer shows 1/x counters; each cell holds a single arrow type.
+- The Magic wheel hides spells the character does not know, for example after loading an earlier save. They stay stored and come back in a save that has them.
+- Loading an earlier save no longer erases wheel assignments that character does not have yet.
+- A wheel with no stored file now starts empty and checked: the game's own hotkeys are cleared and verified empty before you can assign anything.
+- [Wheel] uRestSnapMs default 150 -> 250 (an existing INI keeps its own value).
+
+### Fixed
+- Controller: choosing by pointing with the right stick and letting go of LB now selects reliably, also when you switch between wheels.
+- Closing a wheel quickly and opening it again at once no longer leaves the right stick dead.
+- Safer reading of the inventory, arrow and spell lists, and bounds checks on wheel slots, so a list that changes at the wrong moment is less likely to cause a crash.
+
+### Minor issue
+- F6/F7/F8 can still reset walking to running. R and direct 1-8 quick use preserve walking.
+
 ## 2.2.0 - 2026-10-22 - Improved Wheels Plus
 
 ### Added

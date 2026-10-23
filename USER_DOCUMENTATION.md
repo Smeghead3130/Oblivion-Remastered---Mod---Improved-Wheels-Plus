@@ -1,6 +1,6 @@
 # Improved Wheels Plus — User Documentation
 
-For version **2.2.0**. [Nexus page](https://www.nexusmods.com/oblivionremastered/mods/5713) · [Change history](CHANGELOG.md)
+For version **2.3.0**. [Nexus page](https://www.nexusmods.com/oblivionremastered/mods/5713) · [Change history](CHANGELOG.md)
 
 Keep weapons, armor, supplies, spells and arrows within reach using three separate wheels, with full keyboard, mouse and controller support.
 
@@ -40,19 +40,19 @@ For Mod Organizer 2, install at the game root through Root Builder or an equival
 
 **The first time each character uses the mod, the game's original item and spell hotkeys are cleared and the mod's wheels start empty.** No manual cleanup is required. Rebuild your loadout using favorites, the assign panel or number keys.
 
-Existing Improved Wheels Plus **2.x** assignments are retained when updating to 2.2.0. Legacy wheel files and other wheel mods' assignments are not imported. Existing INI files keep their configured bindings, so your keys may differ from the defaults below.
+Existing Improved Wheels Plus **2.x** assignments are retained when updating to 2.3.0. Legacy wheel files and other wheel mods' assignments are not imported. Existing INI files keep their configured bindings, so your keys may differ from the defaults below.
 
 ## The three wheels
 
 | Wheel | Contents | Behavior |
 | --- | --- | --- |
 | Inventory | Weapons, armor, clothing, potions, poisons and ingredients | Equip or unequip gear; use consumables. Choosing gear you already wear takes it off. |
-| Magic | Spells, including spells made at the Altar of Spellmaking | Selects your active spell and updates its HUD icon. Cast with your normal cast control. Custom spells with identical names are supported. |
-| Ammo | Assigned arrow types | Requires a bow in hand. Choosing an entry equips those arrows. Each slot holds one arrow type. |
+| Magic | Spells, including spells made at the Altar of Spellmaking | Selects your active spell and updates its HUD icon. Cast with your normal cast control. Custom spells with identical names are supported. Spells the character does not know (for example in an earlier save) are hidden, not erased. |
+| Ammo | Assigned arrow types | Eight cells, one arrow type each, kept where you put them. No bow is needed. Choosing an entry equips those arrows. To assign, highlight arrows in the Inventory and press **L3**. |
 
 Inventory and Magic each have **eight slots, with up to five entries per slot by default**: space for 40 item entries and 40 spell entries. Capacity is configurable with `uEntriesPerSlot`.
 
-Point at a slot and cycle its entries to choose the one you want. The center shows the item or spell's name, including custom names. Counters such as **2/3** mean the second entry out of three entries currently in that slot; **0/0** means empty.
+Point at a slot and cycle its entries to choose the one you want. The center shows the item or spell's name, including custom names. Counters such as **2/3** mean the second entry out of three entries currently in that slot; **0/0** means empty. The Ammo wheel has no counters.
 
 A repair hammer is also supported: choosing it opens the Inventory, then the game's repair menu. Press **Esc** to leave the repair menu and again to leave the Inventory. This does not imply support for other utility tools.
 
@@ -69,7 +69,7 @@ Default bindings:
 | Browse next entry | **Right click** |
 | Switch previous / next wheel | **Q / E** |
 | Use the selected entry in a numbered slot, without opening the wheel | **1–8** or **Numpad 1–8** |
-| Open Inventory / Magic / Ammo directly | Hold **F6 / F7 / F8**; Ammo requires a bow |
+| Open Inventory / Magic / Ammo directly | Hold **F6 / F7 / F8** |
 | Favorite / unfavorite the highlighted menu entry | **F** |
 | Open the Inventory / Magic assign panel | **R** in that menu |
 | Assign the highlighted item or spell to a numbered slot | **1–8** or **Numpad 1–8** in its menu |
@@ -92,7 +92,7 @@ To get started: tap **R**, point with the mouse, right click until the entry you
 | Assign to the pointed slot | **A** in the assign panel |
 | Clear a pointed slot | Hold **X** for 0.6 seconds in the assign panel |
 
-With a bow held, the dedicated Ammo shortcut opens an arrow half-wheel. Point with the right stick or **D-pad up / down**, then press its button again or **A** to equip. **B** cancels. Its binding has its own row in the game's Controls menu.
+The dedicated Ammo shortcut opens the Ammo wheel; no bow is needed. By default it is a full ring of eight cells in the middle of the screen; with `uPosition=0` in `[AmmoWheel]` it is a compact half-wheel on the right edge, which becomes a full ring on its own above five arrow types. Point with the right stick or **D-pad up / down**, then press its button again or **A** to equip. **B** cancels. Its binding has its own row in the game's Controls menu.
 
 ## Adding and organizing entries
 

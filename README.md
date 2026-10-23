@@ -2,7 +2,7 @@
 
 **Playing the mod? Read the [User Documentation](USER_DOCUMENTATION.md)** for installation, controls, wheel assignments, settings, compatibility and troubleshooting.
 
-A fork of [Improved Wheel Menu](https://github.com/ApocryphaRealm/ImprovedWheelMenuOR) by ApocryphaRealm, version **2.2.0** of this fork.
+A fork of [Improved Wheel Menu](https://github.com/ApocryphaRealm/ImprovedWheelMenuOR) by ApocryphaRealm, version **2.3.0** of this fork.
 
 **Not compatible with other wheel mods.** It replaces Improved Wheel Menu (same file and setting names) and takes over the game's quick-key radial and hotkeys; use it instead of any other wheel mod, never beside one.
 
@@ -14,10 +14,10 @@ A fork of [Improved Wheel Menu](https://github.com/ApocryphaRealm/ImprovedWheelM
 
 Magic has a blue wheel, gold pointer and blue title with a gold outline. Inventory has a red wheel, silver pointer and red title with a silver outline. Both assignment panels use the same themes. Ammo retains its existing appearance. In `[Theme]`, `bMagicWheel=1` and `bInventoryWheel=1` enable each theme independently; set either to `0` for the native look.
 
-## Keyboard defaults in 2.2.0
+## Keyboard defaults in 2.3.0
 
 - **R:** open the gameplay wheel; press again to cancel. In Inventory/Magic, R opens the native assign panel.
-- **F6 / F7 / F8:** hold to open Equipment / Magic / Ammo directly (Ammo requires a bow).
+- **F6 / F7 / F8:** hold to open Equipment / Magic / Ammo directly.
 - **Q / E:** previous / next wheel.
 - **Z / C:** previous / next entry; **right click** also advances an entry.
 - **Mouse / left click:** point / use.
@@ -31,8 +31,8 @@ All bindings are configurable in the ini. Existing ini files keep their configur
 # Improved Wheel Menu (Oblivion Remastered)
 
 An OBSE64 plugin that makes Oblivion Remastered's own quick-key radial a full wheel menu: eight slots that each hold
-several items (LT / RT choose, RB or A use), a Magic wheel of its own for spells, and an ammo wheel for arrows while a
-bow is held. The game's radial, prompts and quick keys are used throughout. The package README is
+several items (LT / RT choose, RB or A use), a Magic wheel of its own for spells, and an ammo wheel of eight cells for arrows (no
+bow needed). The game's radial, prompts and quick keys are used throughout. The package README is
 [`dist/README.txt`](dist/README.txt); the history is [`CHANGELOG.md`](CHANGELOG.md).
 
 ## Build
