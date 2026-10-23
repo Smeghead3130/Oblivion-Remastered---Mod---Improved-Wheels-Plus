@@ -338,7 +338,7 @@ namespace magicwheel
 		perfdiag::Scope timing(perfdiag::Metric::MagicTick); // TEMP-DIAG
 		// a message of the game over the wheel ("Do you want to poison your next shot"): our counters and centre name, drawn above it, would
 		// ghost through its paper, so they wait until it is answered (the owner's screenshot, 2026-10-22)
-		const bool messageUp = quickkeys::GameMessageUp();
+		const bool messageUp = quickkeys::GameMessageUp(false);
 		if (messageUp) slotcounts::Hide();
 		const auto menu = menus::Active();
 		const bool radial = quickkeys::RadialOpen();

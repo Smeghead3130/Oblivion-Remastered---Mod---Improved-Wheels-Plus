@@ -122,7 +122,7 @@ namespace ringoverlay
 		// a message of the game over the wheel ("Staffs cannot be poisoned") is on a layer under ours: while it is up the game's own wheel
 		// shows and the message stays whole (the owner's screenshot, 2026-10-22)
 		const auto& theme = settings::Get().theme;
-		if (!(a_kind == Kind::kEquipment ? theme.inventory : theme.magic) || quickkeys::GameMessageUp()) {   // INI [Theme]: this wheel keeps the game's own look
+		if (!(a_kind == Kind::kEquipment ? theme.inventory : theme.magic) || quickkeys::GameMessageUp(false)) {   // INI [Theme]: this wheel keeps the game's own look
 			Hide();
 			return;
 		}

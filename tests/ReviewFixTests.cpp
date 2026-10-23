@@ -7,6 +7,7 @@
 #include "RadialSelection.h"
 #include "CloseEpoch.h"
 #include "CarriedHistory.h"
+#include "MessageDiscovery.h"
 #include <vector>
 #include <unordered_set>
 #include <cstdio>
@@ -21,6 +22,13 @@ int ReviewFixTests()
 		if (!ok) { ++failed; std::printf("FAIL: %s\n", label); }
 	};
 	// Current stick direction is usable before native hover reports the new slot.
+	{
+		messagediscovery::Gate discovery;
+		check(discovery.Due(1000, false), "first draw discovers existing dialogs");
+		check(!discovery.Due(1001, false), "repeated drawing avoids object-array discovery");
+		check(discovery.Due(1001, true), "input immediately discovers a newly created dialog");
+		check(!discovery.Due(1100, false) && discovery.Due(1101, false), "drawing refreshes after100ms since last actual discovery");
+	}
 	{
 		std::unordered_set<std::uint32_t> seen{ 42 };
 		std::uint64_t nextCheck = 250;
