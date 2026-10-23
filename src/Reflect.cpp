@@ -1,3 +1,4 @@
+#include "PerfDiag.h" // TEMP-DIAG
 #include "Reflect.h"
 
 #include "PEHook.h"
@@ -15,6 +16,7 @@ namespace reflect
 
 	std::int32_t Offset(UE::UStruct* a_struct, std::string_view a_name)
 	{
+		perfdiag::Scope timing(a_name == "RenderOpacity" ? perfdiag::Metric::OffsetOpacity : perfdiag::Metric::Count); // TEMP-DIAG
 		for (UE::UStruct* s = a_struct; s; s = s->superStruct) {
 			for (auto* f = reinterpret_cast<std::uint8_t*>(s->childProperties); f; f = *reinterpret_cast<std::uint8_t**>(f + kFieldNext)) {
 				const auto& name = *reinterpret_cast<const UE::FName*>(f + kFieldName);
@@ -204,6 +206,7 @@ namespace reflect
 
 	std::vector<UE::UObject*> Instances(UE::UClass* a_class)
 	{
+		perfdiag::Scope timing(perfdiag::Metric::Instances); // TEMP-DIAG
 		std::vector<UE::UObject*> out;
 		auto* arr = UE::FUObjectArray::GetSingleton();
 		if (!arr || !a_class) {
@@ -212,6 +215,8 @@ namespace reflect
 		auto* cdo = a_class->GetDefaultObject(false);
 		arr->LockInternalArray();
 		const std::int32_t n = arr->GetObjectArrayNum();
+		perfdiag::Add(perfdiag::Counter::Instances);
+		perfdiag::Add(perfdiag::Counter::ObjectSlots, n); // TEMP-DIAG
 		for (std::int32_t i = 0; i < n; ++i) {
 			auto* item = arr->IndexToObject(i);
 			auto* o = item ? reinterpret_cast<UE::UObject*>(item->object) : nullptr;

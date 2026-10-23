@@ -1,3 +1,4 @@
+#include "PerfDiag.h" // TEMP-DIAG
 #include "Wheels.h"
 #include "WheelStorage.h"
 #include "AtomicFile.h"
@@ -100,6 +101,7 @@ namespace wheels
 
 		void Save()
 		{
+			perfdiag::Scope timing(perfdiag::Metric::Save); // TEMP-DIAG
 			g_generation.fetch_add(1, std::memory_order_relaxed);
 			if (g_loadedFor.empty() || g_storageRejected) {
 				return;
@@ -323,6 +325,7 @@ namespace wheels
 
 		bool EnsureLoaded()
 		{
+			perfdiag::Scope timing(perfdiag::Metric::EnsureLoaded); // TEMP-DIAG
 			if (!ObserveContext()) return false;
 			if (!RE::PlayerCharacter::GetSingleton()) {
 				return false;
@@ -583,6 +586,7 @@ namespace wheels
 
 		void RemoveGoneInMenus()
 		{
+			perfdiag::Scope timing(perfdiag::Metric::RemoveGone); // TEMP-DIAG
 			if (!inventory::Ready()) { ResetCarriedHistory(); return; }
 			const ULONGLONG now = GetTickCount64();
 			if (now < g_goneCheckAt) return;
@@ -1332,6 +1336,7 @@ namespace wheels
 
 	std::array<SlotCount, 8> SlotCounts(Wheel a_wheel)
 	{
+		perfdiag::Scope timing(perfdiag::Metric::SlotCounts); // TEMP-DIAG
 		std::array<SlotCount, 8> out{};
 		if (!EnsureLoaded()) {
 			return out;
@@ -1385,6 +1390,7 @@ namespace wheels
 
 	std::array<std::uint32_t, 8> MagicSlots()
 	{
+		perfdiag::Scope timing(perfdiag::Metric::MagicSlots); // TEMP-DIAG
 		std::array<std::uint32_t, 8> out{};
 		if (!EnsureLoaded()) {
 			return out;

@@ -1,3 +1,4 @@
+#include "PerfDiag.h" // TEMP-DIAG
 #include "Inventory.h"
 
 #include "TesThread.h"
@@ -67,6 +68,7 @@ RE::BSExtraData* KeyExtra(RE::ExtraDataList* a_list)
 		{
 			__try {
 				for (auto* node = reinterpret_cast<ItemNode*>(a_items); node; node = node->next) {
+					perfdiag::Add(perfdiag::Counter::KeyItems); // TEMP-DIAG
 					RE::ItemChange* item = node->item;
 					if (!item || !item->object || !item->extraData) {
 						continue;
@@ -215,6 +217,7 @@ RE::BSExtraData* KeyExtra(RE::ExtraDataList* a_list)
 
 	KeyMap Keys()
 	{
+		perfdiag::Scope timing(perfdiag::Metric::Keys); // TEMP-DIAG
 		KeyMap out{};
 		if (auto* items = Items()) {
 			if (!KeysGuarded(items, out)) {
@@ -231,6 +234,7 @@ RE::BSExtraData* KeyExtra(RE::ExtraDataList* a_list)
 
 	bool Has(std::uint32_t a_formID)
 	{
+		perfdiag::Add(perfdiag::Counter::Has); // TEMP-DIAG
 		auto* items = a_formID ? Items() : nullptr;
 		return items && CountGuarded(items, a_formID, nullptr) > 0;
 }

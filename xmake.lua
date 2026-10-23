@@ -25,7 +25,16 @@ add_rules("mode.debug", "mode.releasedbg")
 add_requires("minhook", "nlohmann_json")
 add_rules("plugin.vsxmake.autoupdate")
 
+-- TEMP-DIAG: explicit local timing build only; default and shipped build stay off.
+option("iwp_timing")
+    set_default(false)
+    set_showmenu(true)
+option_end()
+
 target("ImprovedWheelMenu")
+    if has_config("iwp_timing") then
+        add_defines("IWP_TEMP_TIMINGS")
+    end
     add_rules("commonlibob64.plugin", {
         name = "ImprovedWheelMenu",
         author = "ApocryphaRealm (modified by cfa911)",

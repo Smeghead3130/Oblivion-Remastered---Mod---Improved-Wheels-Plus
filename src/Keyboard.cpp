@@ -1,3 +1,4 @@
+#include "PerfDiag.h" // TEMP-DIAG
 #include "Keyboard.h"
 
 #include "Ammo.h"
@@ -120,7 +121,7 @@ namespace keyboard
 			return pid == GetCurrentProcessId();
 		}
 
-		bool Down(int a_vk) { return a_vk > 0 && a_vk < 256 && (GetAsyncKeyState(a_vk) & 0x8000) != 0; }
+		bool Down(int a_vk) { perfdiag::Scope timing(perfdiag::Metric::KeyPoll); return a_vk > 0 && a_vk < 256 && (GetAsyncKeyState(a_vk) & 0x8000) != 0; } // TEMP-DIAG
 
 		// Is this array slot's object one of the search plugins' text boxes? The array is walked while the game loads and frees
 		// objects: a slot can hold an object already torn down, whose class or name index is garbage and the engine's name lookup
@@ -432,6 +433,7 @@ namespace keyboard
 
 	bool Apply(XINPUT_GAMEPAD& a_pad)
 	{
+		perfdiag::Scope timing(perfdiag::Metric::KeyboardApply); // TEMP-DIAG
 		const auto& k = settings::Get().keyboard;
 		if (!k.enabled) return false;
 		if (!GameHasFocus()) {

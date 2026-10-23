@@ -1,3 +1,4 @@
+#include "PerfDiag.h" // TEMP-DIAG
 #include "TesThread.h"
 
 #include "Scan.h"
@@ -35,6 +36,7 @@ namespace testhread
 
 		std::int64_t Detour(void* a_this)
 		{
+			perfdiag::Scope timing(perfdiag::Metric::TesPass); // TEMP-DIAG
 			const auto r = g_original(a_this);
 			if (g_calls.fetch_add(1) == 0) {
 				g_thread = GetCurrentThreadId();

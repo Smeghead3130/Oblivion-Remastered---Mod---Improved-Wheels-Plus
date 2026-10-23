@@ -1,3 +1,4 @@
+#include "PerfDiag.h" // TEMP-DIAG
 #include "MagicWheel.h"
 
 #include "Inventory.h"
@@ -46,10 +47,11 @@ namespace magicwheel
 		// MaterialInstanceDynamic of MIC_UI_QuickKeys)
 		UE::UObject* GameImage(UE::UObject* a_wheel)
 		{
+			perfdiag::Scope timing(perfdiag::Metric::GameImage); // TEMP-DIAG
 			auto* material = ui::ChildNamed(a_wheel, L"quickKeys_material");
-			if (!material) material = ui::FindInTree(a_wheel, "quickKeys_material");
+			if (!material) { perfdiag::Add(perfdiag::Counter::GameImageFallback); material = ui::FindInTree(a_wheel, "quickKeys_material"); } // TEMP-DIAG
 			auto* img = material ? ui::ChildNamed(material, L"Image") : nullptr;
-			if (!img && material) img = ui::FindInTree(material, "Image");
+			if (!img && material) { perfdiag::Add(perfdiag::Counter::GameImageFallback); img = ui::FindInTree(material, "Image"); } // TEMP-DIAG
 			static bool logged = false;
 			if (!logged) {
 				logged = true;
@@ -333,6 +335,7 @@ namespace magicwheel
 
 	void Tick()
 	{
+		perfdiag::Scope timing(perfdiag::Metric::MagicTick); // TEMP-DIAG
 		// a message of the game over the wheel ("Do you want to poison your next shot"): our counters and centre name, drawn above it, would
 		// ghost through its paper, so they wait until it is answered (the owner's screenshot, 2026-10-22)
 		const bool messageUp = quickkeys::GameMessageUp();
@@ -345,6 +348,7 @@ namespace magicwheel
 		const bool equipPanel = !magic && menu == menus::Menu::kInventory && quickkeys::PanelOpen();   // the Inventory's assign panel
 		const bool ammoView = (radial && wheels::Active() == wheels::Wheel::kAmmo) ||
 			(equipPanel && wheels::AssignmentWheel(menu) == wheels::Wheel::kAmmo);                      // the radial's third view
+		timing.Label(equipPanel ? perfdiag::Metric::MagicTickInventory : ammoView ? perfdiag::Metric::MagicTickAmmo : menu == menus::Menu::kMagic ? perfdiag::Metric::MagicTickMagicPanel : magic ? perfdiag::Metric::MagicTickMagic : perfdiag::Metric::MagicTick); // TEMP-DIAG
 		if (ammoView && !wheel) wheel = quickkeys::VisibleWheel();
 		if ((magic || equipPanel || ammoView) && wheel) {
 			const int mode = ammoView ? 2 : equipPanel ? 1 : 0;

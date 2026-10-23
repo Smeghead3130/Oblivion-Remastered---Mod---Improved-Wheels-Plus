@@ -1,3 +1,4 @@
+#include "PerfDiag.h" // TEMP-DIAG
 #include "Ui.h"
 
 #include "PEHook.h"
@@ -105,6 +106,7 @@ namespace ui
 
 	UE::UObject* Load(const wchar_t* a_path)
 	{
+		perfdiag::Scope timing(perfdiag::Metric::AssetLoad); // TEMP-DIAG
 		if (!a_path) return nullptr;
 		if (auto* o = UE::StaticFindObject<UE::UObject>(nullptr, nullptr, a_path)) return o;
 		static auto* lib = Class(L"/Script/Engine.KismetSystemLibrary");
@@ -288,6 +290,7 @@ namespace ui
 
 	bool Measure(UE::UObject* a_w, double& a_x, double& a_y, double& a_width, double& a_height)
 	{
+		perfdiag::Scope timing(perfdiag::Metric::Measure); // TEMP-DIAG
 		auto* pc = PlayerController();
 		static auto* lib = Class(L"/Script/UMG.SlateBlueprintLibrary");
 		auto* cdo = lib ? lib->GetDefaultObject(false) : nullptr;
@@ -358,6 +361,7 @@ namespace ui
 	// (the owner, 2026-09-30: "after you hide the wheel menu, the title of it still stays")
 	bool ShownOnScreen(UE::UObject* a_widget)
 	{
+		perfdiag::Scope timing(perfdiag::Metric::ShownOnScreen); // TEMP-DIAG
 		static auto* widgetClass = Class(L"/Script/UMG.Widget");
 		static auto* treeClass = Class(L"/Script/UMG.WidgetTree");
 		static auto* slotClass = Class(L"/Script/UMG.PanelSlot");
@@ -466,6 +470,7 @@ namespace ui
 
 	UE::UObject* FindInTree(UE::UObject* a_userWidget, std::string_view a_name)
 	{
+		perfdiag::Scope timing(perfdiag::Metric::FindInTree); // TEMP-DIAG
 		bool faulted = false;
 		auto* found = SearchGuarded(a_userWidget, a_name, &faulted);
 		if (faulted) {
