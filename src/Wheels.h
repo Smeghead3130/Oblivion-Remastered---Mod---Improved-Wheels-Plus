@@ -22,14 +22,15 @@
 //   keys stay the Equipment wheel's. The Magic wheel is drawn by pushing its spells' icons into the wheel's view
 //   model (the magic menu's panel, and the radial while Magic is the active wheel), A in the magic menu's panel is
 //   ours, and choosing a Magic slot on the radial makes its spell the one the player casts.
-// AMMO: entirely ours, one arrow kind a slot (the owner, 2026-09-29): Y on arrows puts them here, never on the
+// AMMO: entirely ours, one arrow kind a slot. Inventory arrows show the Ammo assign panel; A assigns the chosen
+//   one of eight cells without touching native hotkeys. The favourite shortcut also puts arrows here, never on the
 //   Equipment wheel, and arrows found on the Equipment wheel (an older save, or the game's own assign) move over and
 //   take the game's key with them off the radial. Each wheel holds only its own kind: items, spells, arrows.
 // ============================================================================================================
 
 namespace wheels
 {
-	enum class Wheel { kEquipment, kMagic, kAmmo };   // kAmmo: the bow's ammo wheel (Ammo.cpp), never the radial's active wheel
+	enum class Wheel { kEquipment, kMagic, kAmmo };
 
 	const char* Name(Wheel a_wheel);
 	Wheel Active();                            // the wheel the HUD radial shows
@@ -43,6 +44,7 @@ namespace wheels
 	// every item on the Equipment or Ammo wheel, and a count that moves whenever any wheel changes (the favourites column)
 	std::unordered_set<std::uint32_t> Favourites();
 	std::uint32_t Generation();
+	bool Ready();   // false while missing-file native cleanup has not completed
 	bool CanFavourite(std::uint32_t a_formID);   // any carried item (armour and clothing: a favourite, never on the wheel)
 	void ToggleItem(std::uint32_t a_formID);   // the star in the inventory's favourites column: as Y on that item
 	std::unordered_set<std::uint32_t> MagicFavourites();   // every spell on the Magic wheel
@@ -63,7 +65,8 @@ namespace wheels
 	// the Ammo wheel's eight slots, the top one first: the arrows the player carries (0 = empty, or not carried)
 	std::array<std::uint32_t, 8> AmmoSlots();
 	int                          AmmoSlotAtRing(int a_ring);        // the radial's Ammo view: the Ammo slot whose arrows sit at that ring position (0-7), -1 when none
-	std::array<std::uint32_t, 8> AmmoRingSlots();                   // ... the arrows by ring position, laid out as the shortcut's half wheel lays them out
+	std::array<std::uint32_t, 8> AmmoRingSlots();                   // ... exact saved ring positions, with all eight cells available
+	Wheel AssignmentWheel(menus::Menu a_menu);   // Inventory arrows use Ammo; other rows use Equipment
 	void AssignPressed(menus::Menu a_menu, int a_slot);   // A with a menu's panel showing (a_slot = pointed key, -1 none)
 	void Tick(bool a_assignHeld);              // every controller read: settles a pending Equipment assign
 	void CycleEntry(Wheel a_wheel, int a_slot, int a_dir);   // step the active entry of a slot (D-pad L/R in a panel, LT/RT on the radial)
@@ -86,7 +89,7 @@ namespace wheels
 	void UseAmmo(int a_slot);                  // the radial closed on a slot of the Ammo view: those arrows go on                 // the radial closed on a slot of the Magic wheel: that spell becomes the one cast
 
 	// what the wheel's pictures show
-	void PanelShown(menus::Menu a_menu);       // a menu's panel came up: the Magic wheel in the magic menu, Equipment in the inventory
+	void PanelShown(menus::Menu a_menu);       // a menu's panel came up: Magic in the magic menu; Inventory arrows use Ammo
 	void PanelHidden();
 	void RadialShown();
 	void RadialHidden();

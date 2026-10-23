@@ -7,6 +7,7 @@
 #include "Settings.h"
 #include "WheelStorage.h"
 #include "AtomicFile.h"
+#include "SessionContext.h"
 #include "Ui.h"
 
 #include <filesystem>
@@ -37,6 +38,7 @@ namespace rows
 			std::unordered_map<UE::UObject*, std::int32_t> seen;   // row -> its object-array slot
 		};
 		Kind g_inventory, g_magic;
+		void ObserveContext();
 
 		std::unordered_map<std::uint32_t, reflect::Handle> g_itemIcons, g_spellIcons;   // resolved through the slot when asked
 		std::unordered_map<std::string, std::uint32_t> g_spellsByName;
@@ -189,6 +191,7 @@ namespace rows
 		// what every live row shows now goes into the icon caches
 		void Harvest()
 		{
+			ObserveContext();
 			if (!g_dirty) {
 				return;
 			}
@@ -296,35 +299,63 @@ namespace rows
 			return v ? *v : -1;
 		}
 
+		// The TES thread may change the player's spell list while the UI thread reads it, and a node freed under a walk faults: each raw walk
+		// sits in a helper of plain pointers (__try cannot unwind C++ objects, C2712) and a fault reads as "not there". The list's first node
+		// is inline ({ item, next }); an empty list is a null item and a null next.
+		using SpellNode = RE::BSSimpleList<RE::SpellItem*>::Node;
+
+		// where a spell sits in the player's list (-1 = not in it); a_wanted is a pointer to compare, a_formID (when no pointer) is read
+		int SpellPositionGuarded(RE::TESSpellList* a_list, const RE::SpellItem* a_wanted, std::uint32_t a_formID)
+		{
+			__try {
+				int i = 0;
+				for (auto* node = reinterpret_cast<SpellNode*>(&a_list->spells); node; node = node->next, ++i) {
+					RE::SpellItem* spell = node->item;
+					if (a_wanted ? spell == a_wanted : spell && spell->GetFormID() == a_formID) {
+						return i;
+					}
+				}
+			} __except (EXCEPTION_EXECUTE_HANDLER) {
+			}
+			return -1;
+		}
+
+		std::uint32_t SpellAtGuarded(RE::TESSpellList* a_list, int a_pos)
+		{
+			__try {
+				int i = 0;
+				for (auto* node = reinterpret_cast<SpellNode*>(&a_list->spells); node; node = node->next) {
+					if (i++ == a_pos) {
+						return node->item ? node->item->GetFormID() : 0u;
+					}
+				}
+			} __except (EXCEPTION_EXECUTE_HANDLER) {
+			}
+			return 0;
+		}
+
+		std::size_t SpellCountGuarded(RE::TESSpellList* a_list)
+		{
+			std::size_t n = 0;
+			__try {
+				for (auto* node = reinterpret_cast<SpellNode*>(&a_list->spells); node; node = node->next) {
+					n += node->item ? 1 : 0;
+				}
+			} __except (EXCEPTION_EXECUTE_HANDLER) {
+			}
+			return n;
+		}
+
 		// where a spell sits in the player's list (-1 = not in it)
 		int ListPosition(std::uint32_t a_formID)
 		{
 			auto* list = PlayerSpells();
-			if (!list || !a_formID) {
-				return -1;
-			}
-			int i = 0;
-			for (RE::SpellItem* spell : list->spells) {
-				if (spell && spell->GetFormID() == a_formID) {
-					return i;
-				}
-				++i;
-			}
-			return -1;
+			return list && a_formID ? SpellPositionGuarded(list, nullptr, a_formID) : -1;
 		}
 		std::uint32_t SpellAtPosition(int a_pos)
 		{
 			auto* list = PlayerSpells();
-			if (!list || a_pos < 0) {
-				return 0;
-			}
-			int i = 0;
-			for (RE::SpellItem* spell : list->spells) {
-				if (i++ == a_pos) {
-					return spell ? spell->GetFormID() : 0;
-				}
-			}
-			return 0;
+			return list && a_pos >= 0 ? SpellAtGuarded(list, a_pos) : 0u;
 		}
 
 		// A magic row's InventoryIndex is its spell's place in the player's list, counted from 1: proven live on the rows whose spell the
@@ -471,16 +502,17 @@ namespace rows
 			g_typed = std::move(fresh);
 		}
 
-		// the text typed for a placeholder name (empty = unknown); re-read at most every 2 s when the key is not in the copy
+		// The text typed for a placeholder name (empty = unknown); refresh even hits every 2 s.
 		std::string TypedText(const std::string& a_placeholder)
 		{
-			if (const auto it = g_typed.find(a_placeholder); it != g_typed.end()) return it->second;
+			ObserveContext();
 			const ULONGLONG now = GetTickCount64();
 			if (now - g_typedAt >= 2000) {
 				g_typedAt = now;
+				g_typed.clear();   // the same placeholder can mean something else in an earlier save
 				LoadTyped();
-				if (const auto it = g_typed.find(a_placeholder); it != g_typed.end()) return it->second;
 			}
+			if (const auto it = g_typed.find(a_placeholder); it != g_typed.end()) return it->second;
 			return {};
 		}
 
@@ -502,6 +534,7 @@ namespace rows
 		// the names of the character now playing are in g_displayNames (false = no player yet, or a file that is not ours)
 		bool LoadNames()
 		{
+			ObserveContext();
 			if (!RE::PlayerCharacter::GetSingleton()) return false;
 			const ULONGLONG now = GetTickCount64();
 			if (!g_namesFor.empty() && now - g_namesCheckedAt < 500) return !g_namesRejected;
@@ -843,11 +876,37 @@ namespace rows
 		}
 
 		std::unordered_set<std::uint32_t> g_spellIconFailed;
+
+		void ObserveContext()
+		{
+			static sessionepoch::Token observed{};
+			const auto now = sessioncontext::Current();
+			if (now == observed) return;
+			observed = now;
+			g_itemIcons.clear();
+			g_spellIcons.clear();
+			g_spellIconFailed.clear();
+			g_spellsByName.clear();
+			g_typed.clear();
+			g_saveData = nullptr;
+			g_saveDataSlot = -1;
+			g_typedAt = 0;
+			g_typedStride = 0;
+			g_namesFor.clear();
+			g_displayNames.clear();
+			g_namesCheckedAt = 0;
+			g_indexAgrees.clear();
+			g_indexTrusted = g_indexJudged = false;
+			g_offsetAt.clear();
+			g_dirty = true;
+			g_rowsChanged = g_magicRowsChanged = true;
+		}
 	}
 
 	// the icon a magic row showed this session; else the spell's first effect's own icon, loaded from the paks
 	UE::UObject* SpellIcon(std::uint32_t a_formID)
 	{
+		if (!PlayerHasSpell(a_formID)) return nullptr;
 		Harvest();
 		if (const auto it = g_spellIcons.find(a_formID); it != g_spellIcons.end()) {
 			if (auto* icon = reflect::Get(it->second)) return icon;
@@ -877,31 +936,31 @@ namespace rows
 
 	bool PlayerHasSpell(std::uint32_t a_formID)
 	{
+		if (!a_formID || !sessioncontext::Current().context.ready) return false;
+		auto* wanted = RE::TESForm::LookupByID<RE::SpellItem>(a_formID);
 		auto* list = PlayerSpells();
-		if (!list || !a_formID) return false;
-		for (RE::SpellItem* spell : list->spells) {
-			if (spell && spell->GetFormID() == a_formID) return true;
-		}
-		return false;
-	}
+		if (!list || !wanted) return false;
+		// Match the current live form pointer, without dereferencing old list entries; the walk is fault-guarded (SpellPositionGuarded).
+		return SpellPositionGuarded(list, wanted, 0) >= 0;
+}
 
 	std::size_t PlayerSpellCount()
 	{
 		auto* list = PlayerSpells();
-		std::size_t n = 0;
-		if (list) {
-			for (RE::SpellItem* spell : list->spells) n += spell ? 1 : 0;
-		}
-		return n;
-	}
+		return list ? SpellCountGuarded(list) : 0;
+}
 
 	std::uint32_t SpellByName(const std::string& a_name)
 	{
+		ObserveContext();
 		if (a_name.empty()) {
 			return 0;
 		}
 		if (const auto it = g_spellsByName.find(a_name); it != g_spellsByName.end()) {
-			return it->second;
+			auto* spell = RE::TESForm::LookupByID<RE::SpellItem>(it->second);
+			const char* name = spell ? RE::TESFullName::GetFullName(spell) : nullptr;
+			if (PlayerHasSpell(it->second) && name && a_name == name) return it->second;
+			g_spellsByName.erase(it);
 		}
 		auto* list = PlayerSpells();
 		if (!list) {

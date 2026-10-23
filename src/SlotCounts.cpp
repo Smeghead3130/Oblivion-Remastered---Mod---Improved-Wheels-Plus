@@ -180,11 +180,12 @@ namespace slotcounts
 		// "-/3" when the slot's key holds none of its entries. INI [Wheel] bShowSlotCapacity=1 reads the capacity instead ("2/5",
 		// "0/5", "-/5"). Every label gets text: an empty string left two labels showing the widget's placeholder "Text Block".
 		const auto counts = wheels::SlotCounts(a_wheel);
-		const int  cap = wheels::SlotCap();
+		const int  cap = a_wheel == wheels::Wheel::kAmmo ? 1 : wheels::SlotCap();
 		for (int k = 0; k < 8; ++k) {
 			const auto& c = counts[static_cast<std::size_t>(k)];
 			const int          total = settings::Get().showSlotCapacity ? cap : c.count;
-			const std::string text = c.count == 0 ? std::format("0/{}", total) : c.position > 0 ? std::format("{}/{}", c.position, total) : std::format("-/{}", total);
+			// Ammo has exactly one arrow type per cell: explicitly clear labels inherited from another wheel.
+			const std::string text = a_wheel == wheels::Wheel::kAmmo ? " " : c.count == 0 ? std::format("0/{}", total) : c.position > 0 ? std::format("{}/{}", c.position, total) : std::format("-/{}", total);
 			if (text != g_text[static_cast<std::size_t>(k)]) {
 				if (auto* label = reflect::Get(g_label[static_cast<std::size_t>(k)])) SetText(label, text);
 				g_text[static_cast<std::size_t>(k)] = text;

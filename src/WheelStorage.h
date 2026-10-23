@@ -50,6 +50,30 @@ namespace wheelstorage
 	using Model = std::array<std::array<Slot, 8>, 4>;
 	inline constexpr std::array<std::string_view, 4> kWheelNames{ "Equipment", "Magic", "Ammo", "Favourite" };
 
+	// The structure a slot needs to be drawn and cycled, whatever the character owns: no empty form ID, and an active entry that is
+	// inside the list (or -1). It never asks about ownership: an entry this save does not carry or know may be another save's of
+	// the same character, and erasing it would lose that save's assignment. True when the slot had to be repaired (then, and only
+	// then, the file is written again).
+	inline bool NormalizeSlot(Slot& a_slot)
+	{
+		const int n = static_cast<int>(a_slot.entries.size());
+		const int active = a_slot.active >= 0 && a_slot.active < n ? a_slot.active : -1;
+		std::vector<std::uint32_t> kept;
+		kept.reserve(a_slot.entries.size());
+		int keptActive = -1;
+		for (int i = 0; i < n; ++i) {
+			if (!a_slot.entries[static_cast<std::size_t>(i)]) continue;
+			if (i == active) keptActive = static_cast<int>(kept.size());
+			kept.push_back(a_slot.entries[static_cast<std::size_t>(i)]);
+		}
+		const bool changed = static_cast<int>(kept.size()) != n || keptActive != a_slot.active;
+		if (changed) {
+			a_slot.entries = std::move(kept);
+			a_slot.active = keptActive;
+		}
+		return changed;
+	}
+
 	inline bool ParseUnsigned(std::string_view text, std::uint32_t& value, int base)
 	{
 		if (base == 16 && (text.starts_with("0x") || text.starts_with("0X"))) text.remove_prefix(2);

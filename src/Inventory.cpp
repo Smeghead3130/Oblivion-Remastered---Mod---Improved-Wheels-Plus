@@ -10,34 +10,7 @@ namespace inventory
 		constexpr std::ptrdiff_t kKeyIDOffset = 0x18;
 		constexpr std::size_t kQuickKeySize = 0x20;
 
-		RE::BSSimpleList<RE::ItemChange*>* Items()
-		{
-			auto* player = RE::PlayerCharacter::GetSingleton();
-			if (!player) {
-				return nullptr;
-			}
-			auto* changes = player->extra.GetExtraData<RE::ExtraContainerChanges>();
-			if (!changes || !changes->changes) {
-				return nullptr;
-			}
-			return changes->changes->list;
-		}
-
-		RE::ItemChange* Find(std::uint32_t a_formID)
-		{
-			auto* items = Items();
-			if (!items || !a_formID) {
-				return nullptr;
-			}
-			for (RE::ItemChange* item : *items) {
-				if (item && item->object && item->object->GetFormID() == a_formID) {
-					return item;
-				}
-			}
-			return nullptr;
-		}
-
-		RE::BSExtraData* KeyExtra(RE::ExtraDataList* a_list)
+RE::BSExtraData* KeyExtra(RE::ExtraDataList* a_list)
 		{
 			for (RE::BSExtraData* x = a_list ? a_list->head : nullptr; x; x = x->next) {
 				if (static_cast<std::uint8_t>(x->type.get()) == kQuickKeyType) {
@@ -50,6 +23,138 @@ namespace inventory
 		int KeyOf(const RE::BSExtraData* a_x)
 		{
 			return *(reinterpret_cast<const std::uint8_t*>(a_x) + kKeyIDOffset);
+		}
+
+		// The TES thread may change the player's item list while the UI thread reads it, and a node freed under a walk faults. Every raw
+		// walk below sits in a small helper of plain pointers (__try cannot unwind C++ objects, C2712); a fault reads as "nothing there".
+		// Nodes are walked as { item, next } from the list's inline first node (an empty list is a null item and a null next).
+		using ItemNode = RE::BSSimpleList<RE::ItemChange*>::Node;
+		using ExtraNode = RE::BSSimpleList<RE::ExtraDataList*>::Node;
+
+		RE::BSSimpleList<RE::ItemChange*>* Items()
+		{
+			__try {
+				auto* player = RE::PlayerCharacter::GetSingleton();
+				auto* changes = player ? player->extra.GetExtraData<RE::ExtraContainerChanges>() : nullptr;
+				return changes && changes->changes ? changes->changes->list : nullptr;
+			} __except (EXCEPTION_EXECUTE_HANDLER) {
+				return nullptr;
+			}
+		}
+
+		RE::ItemChange* FindGuarded(RE::BSSimpleList<RE::ItemChange*>* a_items, std::uint32_t a_formID)
+		{
+			__try {
+				for (auto* node = reinterpret_cast<ItemNode*>(a_items); node; node = node->next) {
+					RE::ItemChange* item = node->item;
+					if (item && item->object && item->object->GetFormID() == a_formID) {
+						return item;
+					}
+				}
+			} __except (EXCEPTION_EXECUTE_HANDLER) {
+			}
+			return nullptr;
+		}
+
+		// the pointer is the game's own node: callers that change the item (keys) are on the thread that owns the list
+		RE::ItemChange* Find(std::uint32_t a_formID)
+		{
+			auto* items = Items();
+			return items && a_formID ? FindGuarded(items, a_formID) : nullptr;
+		}
+
+		bool KeysGuarded(RE::BSSimpleList<RE::ItemChange*>* a_items, KeyMap& a_out)
+		{
+			__try {
+				for (auto* node = reinterpret_cast<ItemNode*>(a_items); node; node = node->next) {
+					RE::ItemChange* item = node->item;
+					if (!item || !item->object || !item->extraData) {
+						continue;
+					}
+					for (auto* xn = reinterpret_cast<ExtraNode*>(item->extraData); xn; xn = xn->next) {
+						if (auto* x = KeyExtra(xn->item)) {
+							const int key = KeyOf(x);
+							if (key >= 0 && key < kSlots) {
+								a_out[key] = item->object->GetFormID();
+							}
+						}
+					}
+				}
+				return true;
+			} __except (EXCEPTION_EXECUTE_HANDLER) {
+				return false;
+			}
+		}
+
+		// how many are carried (0 = none, or the list changed under the walk)
+		int CountGuarded(RE::BSSimpleList<RE::ItemChange*>* a_items, std::uint32_t a_formID, bool* a_worn)
+		{
+			__try {
+				RE::ItemChange* item = FindGuarded(a_items, a_formID);
+				if (!item || item->count <= 0) {
+					return 0;
+				}
+				const int count = item->count;
+				if (a_worn && item->extraData) {
+					for (auto* xn = reinterpret_cast<ExtraNode*>(item->extraData); xn; xn = xn->next) {
+						RE::ExtraDataList* xl = xn->item;
+						if (xl && (xl->GetExtraData(RE::EXTRA_DATA_TYPE::Worn) || xl->GetExtraData(RE::EXTRA_DATA_TYPE::WornLeft))) {
+							*a_worn = true;
+						}
+					}
+				}
+				return count;
+			} __except (EXCEPTION_EXECUTE_HANDLER) {
+				return 0;
+			}
+		}
+
+		std::uint32_t FindNamedGuarded(RE::BSSimpleList<RE::ItemChange*>* a_items, const char* a_name)
+		{
+			__try {
+				for (auto* node = reinterpret_cast<ItemNode*>(a_items); node; node = node->next) {
+					RE::ItemChange* item = node->item;
+					if (!item || !item->object || item->count <= 0) {
+						continue;
+					}
+					const char* n = RE::TESFullName::GetFullName(item->object);
+					if (n && std::strcmp(a_name, n) == 0) {
+						return item->object->GetFormID();
+					}
+				}
+			} __except (EXCEPTION_EXECUTE_HANDLER) {
+			}
+			return 0;
+		}
+
+		int PositionGuarded(RE::BSSimpleList<RE::ItemChange*>* a_items, std::uint32_t a_formID)
+		{
+			__try {
+				int i = 0;
+				for (auto* node = reinterpret_cast<ItemNode*>(a_items); node; node = node->next, ++i) {
+					RE::ItemChange* item = node->item;
+					if (item && item->object && item->object->GetFormID() == a_formID) {
+						return i;
+					}
+				}
+			} __except (EXCEPTION_EXECUTE_HANDLER) {
+			}
+			return -1;
+		}
+
+		std::uint32_t AtPositionGuarded(RE::BSSimpleList<RE::ItemChange*>* a_items, int a_position)
+		{
+			__try {
+				int i = 0;
+				for (auto* node = reinterpret_cast<ItemNode*>(a_items); node; node = node->next) {
+					if (i++ == a_position) {
+						RE::ItemChange* item = node->item;
+						return item && item->object && item->count > 0 ? item->object->GetFormID() : 0u;
+					}
+				}
+			} __except (EXCEPTION_EXECUTE_HANDLER) {
+			}
+			return 0;
 		}
 
 		// A new ExtraQuickKey the way the game's own looks: vtable, type 0x55, next, keyID - on the game's heap.
@@ -111,25 +216,13 @@ namespace inventory
 	KeyMap Keys()
 	{
 		KeyMap out{};
-		auto* items = Items();
-		if (!items) {
-			return out;
-		}
-		for (RE::ItemChange* item : *items) {
-			if (!item || !item->object || !item->extraData) {
-				continue;
-			}
-			for (RE::ExtraDataList* xl : *item->extraData) {
-				if (auto* x = KeyExtra(xl)) {
-					const int key = KeyOf(x);
-					if (key >= 0 && key < kSlots) {
-						out[key] = item->object->GetFormID();
-					}
-				}
+		if (auto* items = Items()) {
+			if (!KeysGuarded(items, out)) {
+				out = {};   // the list changed under the walk: no keys rather than half of them
 			}
 		}
 		return out;
-	}
+}
 
 	bool Ready()
 	{
@@ -138,9 +231,9 @@ namespace inventory
 
 	bool Has(std::uint32_t a_formID)
 	{
-		const auto* item = Find(a_formID);
-		return item && item->count > 0;
-	}
+		auto* items = a_formID ? Items() : nullptr;
+		return items && CountGuarded(items, a_formID, nullptr) > 0;
+}
 
 	std::string NameOf(std::uint32_t a_formID)
 	{
@@ -152,20 +245,8 @@ namespace inventory
 	std::uint32_t FindByName(const std::string& a_name)
 	{
 		auto* items = Items();
-		if (!items || a_name.empty()) {
-			return 0;
-		}
-		for (RE::ItemChange* item : *items) {
-			if (!item || !item->object || item->count <= 0) {
-				continue;
-			}
-			const char* n = RE::TESFullName::GetFullName(item->object);
-			if (n && a_name == n) {
-				return item->object->GetFormID();
-			}
-		}
-		return 0;
-	}
+		return items && !a_name.empty() ? FindNamedGuarded(items, a_name.c_str()) : 0;
+}
 
 	std::vector<Carried> CarriedWithTypedNames()
 	{
@@ -199,33 +280,14 @@ namespace inventory
 	int PositionOf(std::uint32_t a_formID)
 	{
 		auto* items = Items();
-		if (!items || !a_formID) {
-			return -1;
-		}
-		int i = 0;
-		for (RE::ItemChange* item : *items) {
-			if (item && item->object && item->object->GetFormID() == a_formID) {
-				return i;
-			}
-			++i;
-		}
-		return -1;
-	}
+		return items && a_formID ? PositionGuarded(items, a_formID) : -1;
+}
 
 	std::uint32_t AtPosition(int a_position)
 	{
 		auto* items = Items();
-		if (!items || a_position < 0) {
-			return 0;
-		}
-		int i = 0;
-		for (RE::ItemChange* item : *items) {
-			if (i++ == a_position) {
-				return item && item->object && item->count > 0 ? item->object->GetFormID() : 0u;
-			}
-		}
-		return 0;
-	}
+		return items && a_position >= 0 ? AtPositionGuarded(items, a_position) : 0u;
+}
 
 	void ClearKey(std::uint32_t a_formID)
 	{
@@ -307,6 +369,18 @@ namespace inventory
 				return false;
 			}
 		}
+
+		bool NativeListsEmpty()
+		{
+			__try {
+				const auto table = NativeTable();
+				for (int slot = 0; slot < kSlots; ++slot) {
+					const auto* list = reinterpret_cast<const NativeList*>(table + slot * sizeof(NativeList));
+					if (list->count || list->head || list->tail) return false;
+				}
+				return true;
+			} __except (EXCEPTION_EXECUTE_HANDLER) { return false; }
+		}
 	}
 
 	// The game keeps the hotkeys of the Magic menu's own assign in the same eight lists as the item keys, and its quick key use
@@ -380,6 +454,11 @@ namespace inventory
 			}
 		}
 		clearAll();
+		const auto keys = Keys();
+		if (!NativeListsEmpty() || std::any_of(keys.begin(), keys.end(), [](auto id) { return id != 0; })) {
+			logger::warn("native hotkeys: empty setup verification failed - initialization remains blocked for retry");
+			return false;
+		}
 		logger::info("native hotkeys: cleared through the game's own routines ({} item key{} removed, all eight hotkey lists emptied)", removed, removed == 1 ? "" : "s");
 		return true;
 	}
@@ -448,21 +527,14 @@ namespace inventory
 	State StateOf(std::uint32_t a_formID)
 	{
 		State out;
-		auto* item = Find(a_formID);
-		if (!item || item->count <= 0) {
+		auto* items = a_formID ? Items() : nullptr;
+		if (!items) {
 			return out;
 		}
-		out.carried = true;
-		out.count = item->count;
-		if (item->extraData) {
-			for (RE::ExtraDataList* xl : *item->extraData) {
-				if (xl && (xl->GetExtraData(RE::EXTRA_DATA_TYPE::Worn) || xl->GetExtraData(RE::EXTRA_DATA_TYPE::WornLeft))) {
-					out.worn = true;
-				}
-			}
-		}
+		out.count = CountGuarded(items, a_formID, &out.worn);
+		out.carried = out.count > 0;
 		return out;
-	}
+}
 
 	std::string Describe(const State& a_state)
 	{
