@@ -199,6 +199,8 @@ bool g_magicPanel = false;   // the magic menu's panel is up (it reports no visi
 			wheels::HoldKey(a_slot);     // and nothing on its key of that slot to use if it points there again
 			wheels::UseAmmo(a_slot);
 			g_closingMagic = true;   // held clear until the radial has closed
+			keyboard::CancelNativeWheel(); // release the native R toggle too; removing the virtual LB alone cannot close it
+			logger::info("pad: Ammo selection requested native R release");
 		}
 
 		void CloseOnMagic(int a_slot)
@@ -209,6 +211,8 @@ bool g_magicPanel = false;   // the magic menu's panel is up (it reports no visi
 			// the radial takes a moment to close and the stick still points meanwhile: the game pointed the slot again and
 			// used ITS key there (2026-09-30 04:37:34, "the game uses slot 3" right after a Magic choice) - held off until closed
 			g_closingMagic = true;
+			keyboard::CancelNativeWheel(); // match Ammo: finish the close instead of leaving Q/E blocked behind held R
+			logger::info("pad: Magic selection requested native R release");
 		}
 
 		// The radial closing by the wheel button - let go after a hold, or pressed again after a tap - uses NOTHING, on either
