@@ -1,6 +1,6 @@
 Improved Wheel - Keyboard and Better Controller Support
 =======================================================
-Version 2.2.0
+Version 2.3.0
 
 A modified build of Improved Wheel Menu (Oblivion Remastered) by ApocryphaRealm (GPL-3.0). It replaces the original
 ImprovedWheelMenu.dll and keeps its file and setting names, so install it instead of the original, not beside it.
@@ -8,31 +8,34 @@ NOT COMPATIBLE WITH OTHER WHEEL MODS: it takes over the game's quick-key radial 
 What this build adds to the original 1.0.1 is listed under ADDED IN THIS BUILD below and in CHANGELOG.md.
 
 Oblivion Remastered's own quick-key radial, made into a full wheel menu: eight slots that each hold several items, a
-Magic wheel of its own for spells, and an ammo wheel for your arrows regardless of equipped weapon. The game's own radial, button
+Magic wheel of its own for spells, and an ammo wheel of eight cells for your arrows, no bow needed. The game's own radial, button
 prompts and quick keys are used throughout; the Inventory and Magic wheel pictures, pointers and title colors have a new look.
 
 ADDED IN THIS BUILD
 -------------------
+  * AMMO WHEEL OF EIGHT CELLS: one arrow type per cell, kept exactly where you put it, and no bow is needed to open it. Assign from
+    the Inventory: highlight arrows and press L3 (the Show Shortcuts panel), point at a cell and press A. Above five arrow types the
+    edge layout becomes a full ring on its own. The Ammo wheel has no 1/x counters.
   * NEW LOOK: blue Magic wheel with a gold pointer and title outline; red Inventory wheel with a silver pointer and title outline.
     Also applies to the assignment panels. [Theme] bMagicWheel=1 and bInventoryWheel=1 enable each look separately; 0 restores the native look.
     Missing wheel pictures retain the native wheel; the new overlays step aside while a game message is up.
   * KEYBOARD SUPPORT, the main addition: the whole wheel menu works from the keyboard, with or without a controller. Every key is
     configurable in the [Keyboard] section of ImprovedWheelMenu.ini (and so is every other setting): each key presses the controller
     control it is named for, so every rule below works from the keyboard. Defaults: R toggles the gameplay wheel; Q / E switch wheels;
-    Hold F6 / F7 / F8 to open Equipment / Magic / Ammo directly (Ammo requires a bow).
+    Hold F6 / F7 / F8 to open Equipment / Magic / Ammo directly.
     Z / C step entries; right click advances an entry; backslash uses; F favourites;
     native menu R opens assignment; hold X clears a slot. The number keys 1-8 and Numpad 1-8
     are slot keys (in gameplay they directly use the selected entry without opening the wheel; in the Inventory / Magic menu they assign the highlighted item or spell to it).
   * Hold X (0.6 s) on a pointed slot of the assign panel to clear the whole slot; L3 opens the assign panel.
   * Select (uFavouriteButton) favourites the highlighted item or spell; LB (uWheelButton) opens the wheel; the game's Y sorting is kept.
   * Spells you made at the Altar of Spellmaking can go on the Magic wheel, also when two share a name.
-  * Slot counters under every slot of the Equipment, Magic and Ammo wheels ("2/3": the entry shown out of the entries the slot holds, "0/0" when empty; bShowSlotCapacity=1 for "2/5"), and the wheel's centre names the pointed spell or item (also names you typed).
+  * Slot counters under every slot of the Equipment and Magic wheels ("2/3": the entry shown out of the entries the slot holds, "0/0" when empty; bShowSlotCapacity=1 for "2/5"), and the wheel's centre names the pointed spell or item (also names you typed).
   * A repair hammer on the Equipment wheel opens the Inventory and then the repair menu (the game needs the Inventory open for it); Esc leaves the repair menu, a second Esc the Inventory.
   * The whole wheel from the keyboard: every key of the [Keyboard] section is rebindable; number keys 1-8 and Numpad 1-8 are slot keys.
   * Buttons that open a wheel directly (uEquipmentWheelButton, uMagicWheelButton, uAmmoWheelButton), the radial's animation speed
     (uAnimSpeedPercent), and where the ammo wheel opens (uPosition).
-  * Wheels are kept per character, and anything a loaded save cannot have (a spell or item that character does not own) is taken off
-    the wheel so nothing tries to use a form that is not there.
+  * Wheels are kept per character, and anything a loaded save does not have (a spell or item that character does not own there, for example in an earlier save) is
+    hidden from the wheel, not erased, so nothing tries to use a form that is not there and it returns in a save that has it.
   * Favourites can be dropped and sold (bBlockFavouriteDropSell, off); they leave the wheel once none is carried. 1 restores the original mod's block.
   * bStayOpenAfterUse (on by default): an item chosen on the Equipment wheel (gear, potions, poisons) is used and the wheel stays open, so several can be used in one opening.
   * Armour and clothing can be put on the Equipment wheel like any item (bArmourOnWheel, on; 0 keeps only shields, as the original mod).
@@ -96,6 +99,7 @@ Nothing to clear by hand. The first time each character loads (about three secon
 (items and spells) and starts its own wheels empty, then saves them as OBSE\Plugins\ImprovedWheelsPlus\Assignments\<character>.iwp
 (and <character>.spells, the names of the spells you made). Anything that was on the game's own wheel is gone after that first load; make
 your wheels with the favourite button, the assign panel (L3 / keyboard R, then hold X for 0.6 s on a slot to clear it) or the number keys.
+Wheels with no stored file start empty, and the game's own hotkeys are checked empty before you can assign anything.
 Wheels of an earlier version or of another wheel mod are not imported. Existing ini files retain their bindings.
 
 INSTALLATION
