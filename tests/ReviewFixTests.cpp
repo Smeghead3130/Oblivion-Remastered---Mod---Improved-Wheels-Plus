@@ -6,6 +6,7 @@
 #include "AmmoLayout.h"
 #include "RadialSelection.h"
 #include "CloseEpoch.h"
+#include "CarriedHistory.h"
 #include <vector>
 #include <unordered_set>
 #include <cstdio>
@@ -20,6 +21,26 @@ int ReviewFixTests()
 		if (!ok) { ++failed; std::printf("FAIL: %s\n", label); }
 	};
 	// Current stick direction is usable before native hover reports the new slot.
+	{
+		std::unordered_set<std::uint32_t> seen{ 42 };
+		std::uint64_t nextCheck = 250;
+		std::vector<std::uint32_t> stored{ 42 };
+		const auto removeMissing = [&](bool carried) {
+			if (carried) seen.insert(42);
+			else if (seen.contains(42)) stored.clear();
+		};
+		carriedhistory::Reset(seen, nextCheck); // Load/context change/readiness loss use this same reset.
+		removeMissing(false); // Earlier save does not carry the later save's assigned item.
+		check(stored.size() == 1, "load keeps stored entry absent from the earlier save");
+		check(seen.empty() && nextCheck == 0, "load clears carried history and its throttle together");
+		removeMissing(true);
+		removeMissing(false); // A real drop after observing the item in this session.
+		check(stored.empty(), "same-session real drop still removes the entry");
+		seen.insert(42); nextCheck = 999;
+		carriedhistory::Reset(seen, nextCheck);
+		carriedhistory::Reset(seen, nextCheck);
+		check(seen.empty() && nextCheck == 0, "repeated not-ready observations remain reset");
+	}
 	check(radialselection::LiveStickKey(0, 32767) == 0, "quick outward stick plus A selects top immediately");
 	check(radialselection::LiveStickKey(32767, 0) == 2, "latest right direction overrides stale previous slot");
 	check(radialselection::LiveStickKey(0, -32768) == 4, "release while pointing down selects bottom");
