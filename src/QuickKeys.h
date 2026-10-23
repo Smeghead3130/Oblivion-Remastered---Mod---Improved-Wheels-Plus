@@ -38,7 +38,8 @@ namespace quickkeys
 	bool PanelOpen();    // a menu's assign panel is showing
 	// one of the game's message boxes is up (WBP_ModernMenu_Message: "You cannot drink any more potions", "apply the poison?", "already poisoned"...):
 	// a click or A then answers it and must not be taken as a choice on the wheel behind it. Looked up when a choice is about to be made, not every read.
-	bool GameMessageUp();
+	// Drawing may defer discovery of a new instance up to100ms; input keeps immediate discovery.
+	bool GameMessageUp(bool a_immediate = true);
 	// any wheel widget's own visibility says shown (UWidget::IsVisible). The magic menu's panel reports no visibility
 	// change through ProcessEvent, so in the magic menu this is how its panel is known to be up. Game thread.
 	bool AnyWheelVisible();

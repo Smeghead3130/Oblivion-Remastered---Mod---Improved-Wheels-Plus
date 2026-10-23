@@ -1,6 +1,6 @@
 Improved Wheel - Keyboard and Better Controller Support
 =======================================================
-Version 2.3.0
+Version 2.4.0
 
 A modified build of Improved Wheel Menu (Oblivion Remastered) by ApocryphaRealm (GPL-3.0). It replaces the original
 ImprovedWheelMenu.dll and keeps its file and setting names, so install it instead of the original, not beside it.
@@ -51,6 +51,10 @@ ADDED IN THIS BUILD
   * The wheels' own texts use the game's UI font: the name above the wheel is gold with a black outline and a shadow, the texts inside are a soft grey.
   * Works with the Menu Search and Menu Search - Controller Keyboard mods (also the 1.x Oblivion Menu Search / Oblivion Search Keyboard): while the on-screen keyboard is open the wheel's menu rules
     stand aside.
+  * SLOW MOTION while a gameplay wheel is open (Equipment, Magic or Ammo): the world slows to one tenth speed and
+    returns to normal the moment the wheel closes. It is on by default. [Wheel] bSlowTime=0 turns it off;
+    uSlowTimePercent (1 to 99) sets the speed. Sound is not slowed. It may not be compatible with other slow-down
+    mods.
 
 WHAT YOU GET
 ------------

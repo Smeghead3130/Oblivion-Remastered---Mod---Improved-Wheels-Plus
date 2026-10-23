@@ -1,4 +1,5 @@
 #include "QuickKeys.h"
+#include "MessageDiscovery.h"
 
 #include "Menus.h"
 #include "PEHook.h"
@@ -503,13 +504,16 @@ namespace quickkeys
 		return g_status.opens;
 	}
 
-	bool GameMessageUp()
+	bool GameMessageUp(bool a_immediate)
 	{
 		static UE::UClass*     s_cls = nullptr;
 		static reflect::Handle s_last;   // the instance seen up last time: asked first
+		static std::vector<reflect::Handle> s_known;
+		static messagediscovery::Gate s_discovery;
 		if (!s_cls) {
 			s_cls = UE::StaticFindObject<UE::UClass>(nullptr, nullptr, L"/Game/UI/Modern/ModalLayer/Messages/WBP_ModernMenu_Message.WBP_ModernMenu_Message_C");
 			if (!s_cls) return false;   // no message shown yet this session
+			logger::info("quick keys: drawing message discovery is limited to100ms; input discovery stays immediate");
 		}
 		const auto up = [](UE::UObject* a_w) {
 			if (!a_w) return false;
@@ -519,7 +523,16 @@ namespace quickkeys
 			return vis && vis.Run() && vis.Get<bool>("ReturnValue");
 		};
 		if (up(reflect::Get(s_last))) return true;
+		for (const auto& handle : s_known) {
+			if (auto* widget = reflect::Get(handle); widget && up(widget)) {
+				s_last = handle;
+				return true;
+			}
+		}
+		if (!s_discovery.Due(GetTickCount64(), a_immediate)) return false;
+		s_known.clear();
 		for (auto* w : reflect::Instances(s_cls)) {
+			s_known.push_back(reflect::Hold(w));
 			if (up(w)) {
 				s_last = reflect::Hold(w);
 				return true;

@@ -2,7 +2,7 @@
 
 **Playing the mod? Read the [User Documentation](USER_DOCUMENTATION.md)** for installation, controls, wheel assignments, settings, compatibility and troubleshooting.
 
-A fork of [Improved Wheel Menu](https://github.com/ApocryphaRealm/ImprovedWheelMenuOR) by ApocryphaRealm, version **2.3.0** of this fork.
+A fork of [Improved Wheel Menu](https://github.com/ApocryphaRealm/ImprovedWheelMenuOR) by ApocryphaRealm, version **2.4.0** of this fork.
 
 **Not compatible with other wheel mods.** It replaces Improved Wheel Menu (same file and setting names) and takes over the game's quick-key radial and hotkeys; use it instead of any other wheel mod, never beside one.
 
@@ -25,6 +25,12 @@ Magic has a blue wheel, gold pointer and blue title with a gold outline. Invento
 - **1-8 / Numpad 1-8:** directly use a slot without opening the wheel in gameplay, or assign the highlighted menu item/spell.
 
 All bindings are configurable in the ini. Existing ini files keep their configured keys.
+
+## Slow motion in 2.4.0
+
+While a gameplay wheel is open (Inventory, Magic or Ammo), the world slows to one tenth speed and returns to normal
+the moment the wheel closes. It is on by default. `[Wheel] bSlowTime=0` turns it off, and `uSlowTimePercent` (1 to 99)
+sets the speed. Sound is not slowed. It may not be compatible with other slow-down mods.
 
 ---
 

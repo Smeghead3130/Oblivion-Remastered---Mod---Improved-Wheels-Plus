@@ -6,6 +6,9 @@
 #include "AmmoLayout.h"
 #include "RadialSelection.h"
 #include "CloseEpoch.h"
+#include "CarriedHistory.h"
+#include "MessageDiscovery.h"
+#include "SlowTimeLease.h"
 #include <vector>
 #include <unordered_set>
 #include <cstdio>
@@ -20,6 +23,83 @@ int ReviewFixTests()
 		if (!ok) { ++failed; std::printf("FAIL: %s\n", label); }
 	};
 	// Current stick direction is usable before native hover reports the new slot.
+	{
+		messagediscovery::Gate discovery;
+		check(discovery.Due(1000, false), "first draw discovers existing dialogs");
+		check(!discovery.Due(1001, false), "repeated drawing avoids object-array discovery");
+		check(discovery.Due(1001, true), "input immediately discovers a newly created dialog");
+		check(!discovery.Due(1100, false) && discovery.Due(1101, false), "drawing refreshes after100ms since last actual discovery");
+		int asks = 0;
+		const auto messageUp = [&](bool a_up) { return [&asks, a_up] { ++asks; return a_up; }; };
+		check(!messagediscovery::InputAllowed(false, messageUp(false)) && asks == 0, "no guarded key down: the dialog is not asked about");
+		check(messagediscovery::InputAllowed(true, messageUp(false)) && asks == 1, "a key down and no dialog: input allowed after exactly one ask");
+		check(!messagediscovery::InputAllowed(true, messageUp(true)) && asks == 2, "a key down and a dialog up: input is held back");
+	}
+	{
+		std::unordered_set<std::uint32_t> seen{ 42 };
+		std::uint64_t nextCheck = 250;
+		std::vector<std::uint32_t> stored{ 42 };
+		const auto removeMissing = [&](bool carried) {
+			if (carried) seen.insert(42);
+			else if (seen.contains(42)) stored.clear();
+		};
+		carriedhistory::Reset(seen, nextCheck); // Load/context change/readiness loss use this same reset.
+		removeMissing(false); // Earlier save does not carry the later save's assigned item.
+		check(stored.size() == 1, "load keeps stored entry absent from the earlier save");
+		check(seen.empty() && nextCheck == 0, "load clears carried history and its throttle together");
+		removeMissing(true);
+		removeMissing(false); // A real drop after observing the item in this session.
+		check(stored.empty(), "same-session real drop still removes the entry");
+		seen.insert(42); nextCheck = 999;
+		carriedhistory::Reset(seen, nextCheck);
+		carriedhistory::Reset(seen, nextCheck);
+		check(seen.empty() && nextCheck == 0, "repeated not-ready observations remain reset");
+	}
+	{
+		slowtime::CloseGate gate;
+		check(gate.Allows(true, 1), "new wheel can slow time");
+		gate.Close(1);
+		check(!gate.Allows(true, 1), "close request excludes still-visible animation");
+		check(!gate.Allows(true, 1), "closing animation cannot reacquire slowdown");
+		check(gate.Allows(true, 2), "quick reopen permits slowdown on new wheel");
+		gate.Close(2);
+		check(!gate.Allows(false, 2) && gate.Allows(true, 2), "closed shortcut resets close gate");
+		gate.Close(2);
+		gate.Reopen();
+		check(gate.Allows(true, 2), "abandoned close permits same-count reopening");
+	}
+	{
+		slowtime::Lease lease;
+		float speed = 1;
+		int writes = 0;
+		const auto write = [&](float value) { speed = value; ++writes; return true; };
+		lease.Update(false, speed, .1f, write);
+		lease.Update(true, speed, .1f, write);
+		check(speed == .1f && writes == 1, "slow time acquires normal speed once");
+		lease.Update(true, speed, .1f, write);
+		check(writes == 1, "continuous wheel switch does not rewrite speed");
+		lease.Update(false, speed, .1f, write);
+		check(speed == 1 && writes == 2, "wheel close restores owned speed");
+		lease.Update(true, .5f, .1f, write);
+		lease.Update(false, .5f, .1f, write);
+		check(writes == 2, "preexisting slow motion left alone");
+		lease.Update(true, 1, .1f, write);
+		lease.Update(true, .3f, .1f, write);
+		lease.Update(true, 1, .1f, write);
+		lease.Update(false, .3f, .1f, write);
+		check(writes == 3, "external change relinquishes until wheel closes");
+		lease.Update(true, 1, .1f, write);
+		lease.Forget();
+		lease.Update(false, .1f, .1f, write);
+		check(writes == 4, "world replacement never restores a stale world");
+		lease.Update(true, 1, 0, write);
+		check(writes == 4, "zero multiplier rejected");
+		lease.Update(false, 1, .1f, write);
+		lease.Update(true, 1, .1f, write);
+		lease.Update(false, speed, .1f, [](float) { return false; });
+		lease.Update(false, speed, .1f, write);
+		check(speed == 1 && writes == 6, "failed restoration is retried while still owned");
+	}
 	check(radialselection::LiveStickKey(0, 32767) == 0, "quick outward stick plus A selects top immediately");
 	check(radialselection::LiveStickKey(32767, 0) == 2, "latest right direction overrides stale previous slot");
 	check(radialselection::LiveStickKey(0, -32768) == 4, "release while pointing down selects bottom");

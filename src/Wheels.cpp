@@ -4,6 +4,7 @@
 #include "SessionContext.h"
 #include "KnownEntry.h"
 #include "EmptySetup.h"
+#include "CarriedHistory.h"
 
 #include "Ammo.h"
 #include "Inventory.h"
@@ -41,6 +42,9 @@ namespace wheels
 		bool g_storageRejected = false;   // never load or overwrite a file without our format and character identity
 		emptysetup::Gate g_emptySetup;
 		bool g_initializeEmpty = false;   // no stored wheel setup: clear native item keys once inventory is ready
+		std::unordered_set<std::uint32_t> g_carriedSeen;
+		std::uint64_t g_goneCheckAt = 0;
+		void ResetCarriedHistory() { carriedhistory::Reset(g_carriedSeen, g_goneCheckAt); }
 
 		int MigrateAmmo();
 
@@ -121,6 +125,7 @@ namespace wheels
 
 		void Load(const std::string& a_name)
 		{
+			ResetCarriedHistory();
 			g_wheels = {};
 			g_emptySetup.Reset();
 			g_initializeEmpty = false;
@@ -575,15 +580,13 @@ namespace wheels
 		// An item that was carried and is gone while a menu is open was dropped, sold or stored - by the mouse or a real keyboard key as well, which NoteLeaving
 		// (the pad's X and A) never sees. Equipment and ammo leave the wheels at once (nothing in a menu uses them up); a potion, poison or ingredient only in a
 		// container or barter menu, because the Inventory menu can drink it. Only items seen carried count: what a loaded save does not have is Sanitize's.
-		std::unordered_set<std::uint32_t> g_carriedSeen;
-		ULONGLONG                         g_goneCheckAt = 0;
 
 		void RemoveGoneInMenus()
 		{
+			if (!inventory::Ready()) { ResetCarriedHistory(); return; }
 			const ULONGLONG now = GetTickCount64();
 			if (now < g_goneCheckAt) return;
 			g_goneCheckAt = now + 250;
-			if (!inventory::Ready()) return;
 			const bool inMenu = menus::AnyOpen() && !quickkeys::RadialOpen();
 			const bool barterOrContainer = inMenu && menus::Active() == menus::Menu::kNone;
 			std::vector<std::uint32_t> gone;
@@ -1242,9 +1245,11 @@ namespace wheels
 	{
 		bool ObserveContext()
 		{
+			if (!inventory::Ready()) ResetCarriedHistory();
 			static sessionepoch::Token observed{};
 			const auto now = sessioncontext::Current();
 			if (now != observed) {
+				ResetCarriedHistory();
 				observed = now;
 				g_pending = {};
 				g_use = {};
