@@ -7,7 +7,7 @@ namespace settings
 {
 	struct Values
 	{
-		bool slowTime = false; // [Wheel] bSlowTime: experimental HUD-wheel slowdown
+		bool slowTime = true; // [Wheel] bSlowTime: the world slows while a gameplay wheel is open (on by default; 0 turns it off)
 		int slowTimePercent = 10; // [Wheel] uSlowTimePercent: 1-99, 10 = one tenth speed
 		int  logLevel = 3;        // [Log] uLogLevel: 0 trace, 1 debug, 2 info, 3 warn (the default: warnings and errors only), 4 error
 		int  entriesPerSlot = 5;  // [Wheel] uEntriesPerSlot: how many entries one slot of a wheel holds (the owner: five by default)

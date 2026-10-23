@@ -72,7 +72,7 @@ namespace settings
 		const auto ini = PluginFolder() / L"ImprovedWheelMenu.ini";
 		Values v;
 		if (std::filesystem::exists(ini)) {
-			v.slowTime = ReadInt(ini, L"Wheel", L"bSlowTime", 0, 0, 1) != 0;
+			v.slowTime = ReadInt(ini, L"Wheel", L"bSlowTime", v.slowTime ? 1 : 0, 0, 1) != 0;
 			v.slowTimePercent = ReadInt(ini, L"Wheel", L"uSlowTimePercent", 10, 1, 99);
 			v.logLevel = ReadInt(ini, L"Log", L"uLogLevel", v.logLevel, 0, 4);
 			v.entriesPerSlot = ReadInt(ini, L"Wheel", L"uEntriesPerSlot", v.entriesPerSlot, 1, 16);
