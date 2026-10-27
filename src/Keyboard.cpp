@@ -165,18 +165,18 @@ namespace keyboard
 		// the keys are still down for GetAsyncKeyState: a digit typed into the bar would assign the highlighted item to that slot, and
 		// a typed R, Z, C or F would press the wheel's virtual buttons. SearchLight says when a bar has the typing (MenuSearch_IsTyping,
 		// the SearchLight release after 1.2.1; an older one has no such export and the answer is no, as before).
-		bool SearchLightAnswers(const char* a_export)
+		bool MenusRevampedAnswers(const char* a_export)
 		{
-			const HMODULE m = GetModuleHandleW(L"MenuSearch.dll");
+			const HMODULE m = GetModuleHandleW(L"MenusRevamped.dll");
 			if (!m) return false;
 			const auto fn = reinterpret_cast<bool (*)()>(GetProcAddress(m, a_export));
 			return fn && fn();
 		}
 
-		bool SearchLightTyping() { return SearchLightAnswers("MenuSearch_IsTyping"); }
+		bool SearchLightTyping() { return MenusRevampedAnswers("MenusRevamped_IsTyping") || MenusRevampedAnswers("MenusRevamped_IsControllerKeyboardOpen"); }
 
 		// the mouse is over a SearchLight bar: a click there is the bar's (it starts the typing), not a click on the wheel's last pointed slot
-		bool SearchLightBarUnderMouse() { return SearchLightAnswers("MenuSearch_CursorOverBar"); }
+		bool SearchLightBarUnderMouse() { return MenusRevampedAnswers("MenusRevamped_CursorOverBar"); }
 
 		// a search box (the Inventory Search / Magic Search plugins') has the keyboard: digits are typing, not slot keys.
 		// The boxes found are kept (as Handles: the slot says whether the object is still the same); the array is walked again only when
