@@ -1,6 +1,6 @@
 # Improved Wheels Plus — User Documentation
 
-For version **2.4.0**. [Nexus page](https://www.nexusmods.com/oblivionremastered/mods/5713) · [Change history](CHANGELOG.md)
+For version **2.4.1**. [Nexus page](https://www.nexusmods.com/oblivionremastered/mods/5713) · [Change history](CHANGELOG.md)
 
 Keep weapons, armor, supplies, spells and arrows within reach using three separate wheels, with full keyboard, mouse and controller support.
 
@@ -41,7 +41,7 @@ For Mod Organizer 2, install at the game root through Root Builder or an equival
 
 **The first time each character uses the mod, the game's original item and spell hotkeys are cleared and the mod's wheels start empty.** No manual cleanup is required. Rebuild your loadout using favorites, the assign panel or number keys.
 
-Existing Improved Wheels Plus **2.x** assignments are retained when updating to 2.4.0. Legacy wheel files and other wheel mods' assignments are not imported. Existing INI files keep their configured bindings, so your keys may differ from the defaults below.
+Existing Improved Wheels Plus **2.x** assignments are retained when updating to 2.4.1. Legacy wheel files and other wheel mods' assignments are not imported. Existing INI files keep their configured bindings, so your keys may differ from the defaults below.
 
 ## The three wheels
 
@@ -171,8 +171,7 @@ The `.iwp` file stores wheel assignments; the matching `.spells` file stores cus
 ## Compatibility
 
 - **Other wheel mods:** incompatible. Use one wheel mod only.
-- **SearchLight:** optional; neither mod requires the other. With SearchLight 1.3.0 or newer, typing into or clicking its search bars takes priority over wheel shortcuts.
-- **SearchLight - Controller Keyboard:** the wheel steps aside while its on-screen keyboard is open.
+- **Menus Revamped:** optional; neither mod requires the other. From 2.4.1 the wheel asks `MenusRevamped.dll` whether a search bar or the controller keyboard has the input: typing into or clicking a bar takes priority over wheel shortcuts, and the wheel steps aside while the on-screen keyboard is open. Menus Revamped replaces the separate SearchLight and SearchLight - Controller Keyboard plugins; 2.4.1 no longer detects those older plugins (use wheel 2.4.0 with them).
 - **Game Pass / Microsoft Store, alternative loaders:** unsupported unless separately verified. The released build requires OBSE64 and Address Library.
 
 ## Troubleshooting
