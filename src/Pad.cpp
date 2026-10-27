@@ -411,23 +411,20 @@ const int slot = settings::Get().chooseOnClose ? PointedKey() : -1;
 
 		// The Menu Search - Controller Keyboard plugin (MenuSearchControllerKeyboard.dll, once OblivionSearchKeyboard.dll) has the controller while its keyboard is up: the menu rules stand aside
 		// (X on a favourite would be swallowed as 'not a drop' before the keyboard could use it as Delete).
+
 		bool SearchKeyboardOpen()
 		{
 			using Fn = bool (*)();
-			static Fn        s_fn = nullptr;
-			static ULONGLONG s_next = 0;
-			if (!s_fn) {
-				const ULONGLONG now = GetTickCount64();
-				if (now < s_next) return false;
-				s_next = now + 2000;
-				if (HMODULE m = GetModuleHandleW(L"MenuSearchControllerKeyboard.dll")) {
-					s_fn = reinterpret_cast<Fn>(GetProcAddress(m, "MenuSearchControllerKeyboard_IsOpen"));
-				} else if (HMODULE old = GetModuleHandleW(L"OblivionSearchKeyboard.dll")) {   // the keyboard under its 1.x name
-					s_fn = reinterpret_cast<Fn>(GetProcAddress(old, "OblivionSearchKeyboard_IsOpen"));
-				}
-				if (!s_fn) return false;
+			static Fn open = nullptr;
+			static ULONGLONG next = 0;
+			if (!open) {
+				const auto now = GetTickCount64();
+				if (now < next) return false;
+				next = now + 2000;
+				const auto module = GetModuleHandleW(L"MenusRevamped.dll");
+				open = module ? reinterpret_cast<Fn>(GetProcAddress(module, "MenusRevamped_IsControllerKeyboardOpen")) : nullptr;
 			}
-			return s_fn();
+			return open && open();
 		}
 
 		void ResetMenuState()
