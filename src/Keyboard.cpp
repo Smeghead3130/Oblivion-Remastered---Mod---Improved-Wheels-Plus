@@ -7,6 +7,7 @@
 #include "QuickKeys.h"
 #include "MessageDiscovery.h"
 #include "Reflect.h"
+#include "Rows.h"
 #include "Wheels.h"
 #include "Ui.h"
 #include "Settings.h"
@@ -226,14 +227,11 @@ namespace keyboard
 		// the mouse is reported in screen pixels, the widgets are measured in viewport units (pixels / the UI's DPI scale: the log
 		// showed the cursor at the exact middle of a 2560 x 1440 screen with the wheel's middle at (960, 540)); the scale comes from the
 		// game (GetViewportScale), failing that the engine's default rule of the window height over 1080, or the INI's own value
-		bool MouseUnitsImpl(double& a_mx, double& a_my, double& a_scale)
+		double ViewportScale()
 		{
 			auto* pc = ui::PlayerController();
-			if (!pc) return false;
-			ui::Call c(pc, L"GetMousePosition");
-			if (!c || !c.RunGuarded()) return false;
 			double scale = 1.0;
-			{
+			if (pc) {
 				static auto* lib = ui::Class(L"/Script/UMG.WidgetLayoutLibrary");
 				ui::Call vs(lib ? lib->GetDefaultObject(false) : nullptr, L"GetViewportScale");
 				bool got = false;
@@ -254,38 +252,52 @@ namespace keyboard
 				}
 			}
 			if (settings::Get().display.uiScalePercent > 0) scale = settings::Get().display.uiScalePercent / 100.0;
+			return scale;
+		}
+
+		bool MouseUnitsImpl(double& a_mx, double& a_my, double& a_scale)
+		{
+			auto* pc = ui::PlayerController();
+			if (!pc) return false;
+			ui::Call c(pc, L"GetMousePosition");
+			if (!c || !c.RunGuarded()) return false;
+			const double scale = ViewportScale();
 			a_scale = scale;
 			a_mx = c.Get<float>("LocationX") / scale;
 			a_my = c.Get<float>("LocationY") / scale;
 			return true;
 		}
 
-		// The cell (0..7, -1 = none) under the mouse. The game points a slot from the mouse's ANGLE round the wheel's middle, so hovering
-		// a cell does not point it (the owner, 2026-10-16: the clickable spots were inside the hole, not on the cells): the cells are
-		// found from the wheel picture's own geometry - eight circles 45 degrees apart, 0.71 of the picture's half-width out (the
-		// counters sit on the same spots) - and the mouse position the player controller reports.
-		int CellUnderMouse(std::string* a_why = nullptr)
+		// The Windows cursor in viewport units. While a menu owns the mouse (the assign panel) GetMousePosition stays frozen at
+		// the spot the menu took the mouse, and only the Windows cursor follows the visible pointer (synchronized log, IWP-032,
+		// 2026-10-28). Only when the game's own window is in front.
+		bool CursorUnits(double& a_x, double& a_y)
+		{
+			const HWND fg = GetForegroundWindow();
+			DWORD      pid = 0;
+			if (!fg || !GetWindowThreadProcessId(fg, &pid) || pid != GetCurrentProcessId()) return false;
+			POINT p{};
+			if (!GetCursorPos(&p) || !ScreenToClient(fg, &p)) return false;
+			const double scale = ViewportScale();
+			a_x = p.x / scale;
+			a_y = p.y / scale;
+			return true;
+		}
+
+		// The cell (0..7, -1 = none) at a point in viewport units. The game points a slot from the mouse's ANGLE round the wheel's
+		// middle, so hovering a cell does not point it (the owner, 2026-10-16: the clickable spots were inside the hole, not on the
+		// cells): the cells are found from the wheel picture's own geometry - eight circles 45 degrees apart, 0.71 of the
+		// picture's half-width out (the counters sit on the same spots).
+		int CellAt(double mx, double my)
 		{
 			auto* wheel = quickkeys::VisibleWheel();
-			auto* pc = ui::PlayerController();
-			if (!wheel || !pc) {
-				if (a_why) *a_why = wheel ? "no player controller" : "no visible wheel widget";
-				return -1;
-			}
+			if (!wheel) return -1;
 			auto* material = ui::ChildNamed(wheel, L"quickKeys_material");
 			if (!material) material = ui::FindInTree(wheel, "quickKeys_material");
 			auto* image = material ? ui::ChildNamed(material, L"Image") : nullptr;
 			if (!image && material) image = ui::FindInTree(material, "Image");
 			double x = 0, y = 0, w = 0, h = 0;
-			if (!image || !ui::Measure(image, x, y, w, h)) {
-				if (a_why) *a_why = "the wheel picture could not be measured";
-				return -1;
-			}
-			double mx = 0, my = 0, scale = 1.0;
-			if (!MouseUnitsImpl(mx, my, scale)) {
-				if (a_why) *a_why = "GetMousePosition failed";
-				return -1;
-			}
+			if (!image || !ui::Measure(image, x, y, w, h)) return -1;
 			const double half = w * 0.5, cx = x + half, cy = y + h * 0.5;
 			int          best = -1;
 			const double ring = settings::Get().display.cellRingPercent / 100.0;
@@ -296,7 +308,6 @@ namespace keyboard
 				const double d = std::hypot(mx - px, my - py);
 				if (d < bestDist) bestDist = d, best = k;
 			}
-			if (a_why) *a_why = std::format("mouse ({:.0f}, {:.0f}) in viewport units (UI scale {:.2f}), wheel picture centre ({:.0f}, {:.0f}) half-width {:.0f}", mx, my, scale, cx, cy, half);
 			return best;
 		}
 
@@ -549,7 +560,29 @@ namespace keyboard
 				}
 			}
 		}
-		if (menus::AnyOpen() && !radial) press(k.select, XINPUT_GAMEPAD_BACK);
+		// IWP-030 select-key handling: call the same favourite action without generating pad input.
+		{
+			static bool selectWasDown = false;
+			const bool selectDown = Down(k.select);
+			const bool selectPressed = selectDown && !selectWasDown;
+			selectWasDown = selectDown;
+			if (selectDown && menus::AnyOpen() && !radial) {
+				const bool typing = Printable(k.select) && Typing();
+				if (settings::Get().favouriteButton == XINPUT_GAMEPAD_BACK && context != menus::Menu::kNone) {
+					if (selectPressed && !typing) {
+						logger::info("keyboard: native favourite action");
+						wheels::Favourite(context);
+					}
+				} else {
+					const auto item = settings::Get().favouriteButton == XINPUT_GAMEPAD_BACK ? rows::HighlightedPlayerItemInContainer() : 0;
+					if (item) {
+						if (selectPressed && !typing) wheels::ToggleItem(item);
+					} else {
+						press(k.select, XINPUT_GAMEPAD_BACK);
+					}
+				}
+			}
+		}
 		// the right stick: four keys, two together make a diagonal
 		const int sx = (Down(k.stickRight) ? 1 : 0) - (Down(k.stickLeft) ? 1 : 0);
 		const int sy = (Down(k.stickUp) ? 1 : 0) - (Down(k.stickDown) ? 1 : 0);
@@ -583,6 +616,42 @@ namespace keyboard
 				any = true;
 			}
 		}
+		// IWP-032 panel hover start
+		// The mouse owns the selection from the moment it moves onto a cell until the stick, the d-pad or the shoulders (a
+		// controller, or keys that press them) move it; while it owns it the hovered cell is held, because the game keeps
+		// pointing the slot at the angle of its own frozen mouse position (it snapped back to slot 8: owner recording, 2026-10-28).
+		{
+			static bool  hadMouse = false, mouseOwns = false;
+			static POINT last{};
+			static int   held = -1;
+			const bool   padMoves = (a_pad.wButtons & (XINPUT_GAMEPAD_DPAD_UP | XINPUT_GAMEPAD_DPAD_DOWN | XINPUT_GAMEPAD_DPAD_LEFT |
+			                                      XINPUT_GAMEPAD_DPAD_RIGHT | XINPUT_GAMEPAD_LEFT_SHOULDER | XINPUT_GAMEPAD_RIGHT_SHOULDER)) ||
+			                     std::abs(a_pad.sThumbLX) > XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE || std::abs(a_pad.sThumbLY) > XINPUT_GAMEPAD_LEFT_THUMB_DEADZONE ||
+			                     std::abs(a_pad.sThumbRX) > XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE || std::abs(a_pad.sThumbRY) > XINPUT_GAMEPAD_RIGHT_THUMB_DEADZONE;
+			if (!panel) {
+				hadMouse = mouseOwns = false;
+				held = -1;
+			} else {
+				POINT p{};
+				if (GetCursorPos(&p)) {   // only a move counts: a resting mouse never takes the selection from the controller
+					const bool moved = hadMouse && (p.x != last.x || p.y != last.y);
+					last = p;
+					hadMouse = true;
+					double x = 0, y = 0;
+					if (moved && !SearchLightBarUnderMouse() && CursorUnits(x, y)) {   // the Windows cursor: GetMousePosition is frozen here
+						const int cell = CellAt(x, y);
+						if (cell >= 0) {
+							if (cell != held) logger::info("keyboard: mouse hover selected panel slot {}", cell + 1);
+							held = cell;
+							mouseOwns = true;
+						}
+					}
+				}
+				if (padMoves) mouseOwns = false;
+				if (mouseOwns && held >= 0 && quickkeys::PointedSlot() != held + 1 && !quickkeys::GameMessageUp()) quickkeys::Repoint(held);
+			}
+		}
+		// IWP-032 panel hover end
 		{   // the left mouse button on a cell of the open assign panel assigns the highlighted row to that cell
 			static bool s_lmb = false;
 			const bool now = Down(VK_LBUTTON);
@@ -590,10 +659,20 @@ namespace keyboard
 			const bool inMenu = menu == menus::Menu::kInventory || menu == menus::Menu::kMagic;
 			const bool where = inMenu ? PanelUp(menu) : quickkeys::RadialOpen();   // the assign panel, or the HUD radial
 			if (now && !s_lmb && g_script.kind == Script::kNone && where && !quickkeys::GameMessageUp() && !SearchLightBarUnderMouse()) {   // a click on a message of the game is the message's
-				const int pointed = quickkeys::PointedSlot();   // 1..8, the slot the mouse (or the stick) points at now
+				int pointed = quickkeys::PointedSlot();   // 1..8, the slot the mouse (or the stick) points at now
+				double cx = 0, cy = 0;
+				if (inMenu && CursorUnits(cx, cy)) {   // the cell under the cursor wins over a selection the hover has not caught up with
+					const int cell = CellAt(cx, cy);
+					if (cell >= 0) pointed = cell + 1;
+				}
 				if (pointed >= 1) {
-					g_script = { Script::kClick, pointed - 1, 0, false, GetTickCount64() };
-					logger::info("keyboard: click - A on slot {} of the {}", pointed, inMenu ? "assign panel" : "radial");
+					if (inMenu) {
+						wheels::AssignHighlighted(menu, pointed - 1);
+						logger::info("keyboard: direct mouse assignment on slot {}", pointed);
+					} else {
+						g_script = { Script::kClick, pointed - 1, 0, false, GetTickCount64() };
+						logger::info("keyboard: click - A on slot {} of the radial", pointed);
+					}
 				}
 			}
 			s_lmb = now;
